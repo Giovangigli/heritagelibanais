@@ -1161,12 +1161,6 @@ $('save-revision').addEventListener('click',async()=>{
 $('cancel-generation').addEventListener('click',()=>cancelGeneration());
 $('reset-dossier').addEventListener('click', resetDossier);
 $('undo-reset').addEventListener('click', undoReset);
-$('back-to-dossier').addEventListener('click', (event) => {
-  event.preventDefault();
-  cancelGeneration();
-  form.elements.sourceText.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  form.elements.sourceText.focus({ preventScroll: true });
-});
 $('validate').addEventListener('click', async () => {
   if (!$('final-confirmation').checked) return feedback('Confirmez la relecture du texte et des visuels.', true);
   const button=$('validate');button.disabled=true;feedback('Publication sur WordPress en cours…');
@@ -1175,7 +1169,8 @@ $('validate').addEventListener('click', async () => {
     while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
     const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:cloudRevision,preview:state}),signal:AbortSignal.timeout(25000)});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'La publication a échoué.');
-    state=result.state;cloudRevision=result.revision;cloudPending=false;cloudConflict=false;
+    state=result.state;cloudPending=false;cloudConflict=result.revision===null;
+    if(!cloudConflict)cloudRevision=result.revision;
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
     render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la lettre.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }
