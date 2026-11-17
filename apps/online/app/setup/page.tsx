@@ -1,0 +1,22 @@
+import Image from 'next/image';
+import {env} from 'cloudflare:workers';
+import {requireChatGPTUser} from '../chatgpt-auth';
+import {resolveStudioAccess} from '../../lib/studio-access.mjs';
+import ConnectionForm from './connection-form';
+export const dynamic='force-dynamic';
+export default async function Setup(){
+  const user=await requireChatGPTUser('/setup');
+  const access=resolveStudioAccess(env,user);
+  const hostingManaged=access?.role==='owner'&&Boolean(env.N8N_STUDIO_WEBHOOK_TOKEN);
+  return <main className="setup-shell">
+    <Image src="/dist/assets/logo.svg" alt="Héritage Libanais" width={180} height={60} unoptimized/>
+    <p className="eyebrow">STUDIO PRIVÉ</p>
+    <h1>Connexion au modèle</h1>
+    {!access?.canManageConnections
+      ? <p>La connexion est gérée par l’administration du Studio.</p>
+      : hostingManaged
+        ? <p>Le jeton n8n est géré dans les réglages de l’hébergement.</p>
+        : <><p>Enregistrez le jeton du workflow n8n de production. Le Studio le conserve chiffré côté serveur.</p><ConnectionForm/></>}
+    <a href="/private-studio/studio.html">Revenir au Studio</a>
+  </main>;
+}

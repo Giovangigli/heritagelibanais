@@ -1,0 +1,21 @@
+import {sqliteTable,text,integer} from 'drizzle-orm/sqlite-core';
+export const connections=sqliteTable('studio_connections',{
+  userId:text('user_id').primaryKey(),
+  encryptedToken:text('encrypted_token').notNull(),
+  updatedAt:text('updated_at').notNull(),
+});
+export const sessions=sqliteTable('studio_sessions',{
+  userId:text('user_id').primaryKey(),
+  state:text('state_json').notNull(),
+  revision:integer('revision').notNull().default(1),
+  updatedAt:text('updated_at').notNull(),
+});
+export const mailingJobs=sqliteTable('studio_mailing_jobs',{
+  id:text('id').primaryKey(),
+  userId:text('user_id').notNull(),
+  requestId:text('request_id').notNull().unique(),
+  contentHash:text('content_hash').notNull(),
+  stateJson:text('state_json').notNull(),
+  createdAt:text('created_at').notNull(),
+  updatedAt:text('updated_at').notNull(),
+});
