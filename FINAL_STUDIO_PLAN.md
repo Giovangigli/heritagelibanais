@@ -2,7 +2,7 @@
 
 Updated 17 November 2026. This is the release checklist for `apps/online`. The social export button and current social editing UI remain available.
 
-The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 18). Its WordPress and Brevo production connections still need the checks below before Joseph's full demo.
+The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 19). Its WordPress and Brevo production connections still need the checks below before Joseph's full demo.
 
 ## Website publication
 
@@ -17,6 +17,7 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 - Implemented in v2: after publication, **Préparer la lettre** selects the new WordPress post in Mailing. The editor can change the subject, inbox preview text, and introduction, preview the resulting newsletter, then explicitly confirm scheduling in Brevo. The send request binds to the reviewed content hash, so changing the text requires a new preview.
 - Event reminders: Mailing can select **Rappel avant l’événement** for a future event, edit the same fields, preview, and explicitly confirm. The server checks that every scheduled batch is before the event. Reminders currently go to confirmed newsletter subscribers; event registrants will be a separate audience once registration exists.
 - Brevo key: save it once in the Studio owner form. It is encrypted in the Studio database and shared with authorized editors. The account check must pass before storage; missing newsletter-list or sender setup is reported separately. The live database had no Brevo connection on 17 November, so the owner still needs to enter a valid key once. Do not put the key in n8n or the repository.
+- DNS: OVH (`dns103.ovh.net`, `ns103.ovh.net`) is authoritative, so the WordPress.com DNS editor has no effect. On 17 November the `brevo1._domainkey` CNAME was added and verified in the OVH zone. Still add `brevo2._domainkey`, the Brevo verification TXT at the root, and `_dmarc` TXT from the current Brevo domain configuration; then run Brevo authentication and confirm the sender becomes active. The second CNAME form was open but not saved when browser approval review became unavailable. Preserve existing OVH MX, SPF, DKIM and website records.
 - Release gate: configure Brevo's production API key in Sites or the owner setup. Authenticate `heritage-libanais.fr` in Brevo and activate the new `contact@heritage-libanais.fr` sender (created on 17 November, currently inactive). The Sites runtime already has `BREVO_SENDER_EMAIL=contact@heritage-libanais.fr` and `BREVO_REPLY_TO=heritage.libanais@gmail.com`. Test preview and a campaign to internal recipients before enabling public sends. As checked on 17 November, the domain is not authenticated.
 - Delivery gate: verify unsubscribe handling before a second batch, daily quota across multiple editions, partial-failure recovery, and actual delivery status. Do not treat “scheduled” as “delivered.”
 
