@@ -1176,11 +1176,9 @@ $('validate').addEventListener('click', async () => {
   try {
     clearTimeout(cloudSaveTimer);
     while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
-    if(cloudPending) await saveCloudSession();
-    if(cloudPending||cloudConflict) throw new Error('Enregistrez le dossier en ligne avant de publier.');
-    const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:$('reviewer').value,revision:cloudRevision}),signal:AbortSignal.timeout(25000)});
+    const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:$('reviewer').value,revision:cloudRevision,preview:state}),signal:AbortSignal.timeout(25000)});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'La publication a échoué.');
-    state=result.state;cloudRevision=result.revision;
+    state=result.state;cloudRevision=result.revision;cloudPending=false;cloudConflict=false;
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
     render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la lettre.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }

@@ -141,12 +141,23 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       return json({post});
     }
     if(path==='/api/publication/publish'&&request.method==='POST'){
-      const {reviewer,revision}=await bodyJson(request);
+      const {reviewer,revision,preview}=await bodyJson(request);
       if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision))throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
       const db=database(env);
       const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
-      if(!row||row.revision!==revision)throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
-      const state=JSON.parse(row.state_json);
+      let current=row;
+      if(preview!==undefined){
+        if(preview?.schema!==1||!preview.dossier||!Array.isArray(preview.proposals)||!Array.isArray(preview.history))throw error('L’aperçu du dossier est invalide.',400);
+        try{validate(preview,reviewer);}catch(e){throw error(e.message,409);}
+        const now=new Date().toISOString(), snapshot=JSON.stringify(preview);
+        const saved=revision===0
+          ?await db.prepare('INSERT INTO studio_sessions (user_id,state_json,revision,updated_at) VALUES (?,?,1,?) ON CONFLICT(user_id) DO NOTHING').bind(access.workspaceUserId,snapshot,now).run()
+          :await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(snapshot,now,access.workspaceUserId,revision).run();
+        if(!saved.meta.changes)throw error('Une autre fenêtre a modifié le dossier. Retrouvez la dernière version avant de publier.',409);
+        current={revision:revision+1,state_json:snapshot};
+      }
+      if(!current||current.revision!==(preview===undefined?revision:revision+1))throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
+      const state=JSON.parse(current.state_json);
       let next;
       try{next=validate(state,reviewer);}catch(e){throw error(e.message,409);}
       const proposal=state.proposals.at(-1);
@@ -172,9 +183,9 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       next.draft={...next.draft,localSimulation:false,wordpressStatus:'publish',wordpressPostId:post.id,wordpressUrl:post.url,wordpressSlug:slug};
       next.status='Publié';
       next.history.push({status:'Publié',at:new Date().toISOString(),note:`Publication WordPress n°${post.id}`});
-      const saved=await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(next),new Date().toISOString(),access.workspaceUserId,revision).run();
+      const saved=await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(next),new Date().toISOString(),access.workspaceUserId,current.revision).run();
       if(!saved.meta.changes)throw error('La publication est en ligne, mais le dossier a changé. Rechargez avant toute autre action.',409);
-      return json({state:next,revision:revision+1,post});
+      return json({state:next,revision:current.revision+1,post});
     }
     if(path==='/api/publication/trash'&&request.method==='POST'){
       const {revision,postId}=await bodyJson(request);
