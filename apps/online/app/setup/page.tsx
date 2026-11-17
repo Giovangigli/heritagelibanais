@@ -3,6 +3,7 @@ import {env} from 'cloudflare:workers';
 import {requireChatGPTUser} from '../chatgpt-auth';
 import {resolveStudioAccess} from '../../lib/studio-access.mjs';
 import ConnectionForm from './connection-form';
+import WordPressConnectionForm from './wordpress-connection-form';
 export const dynamic='force-dynamic';
 export default async function Setup(){
   const user=await requireChatGPTUser('/setup');
@@ -11,7 +12,12 @@ export default async function Setup(){
   return <main className="setup-shell">
     <Image src="/dist/assets/logo.svg" alt="Héritage Libanais" width={180} height={60} unoptimized/>
     <p className="eyebrow">STUDIO PRIVÉ</p>
-    <h1>Connexion au modèle</h1>
+    <h1>Connexions du Studio</h1>
+    <h2>WordPress</h2>
+    {access?.canManageConnections
+      ? <WordPressConnectionForm/>
+      : <p>La connexion WordPress est gérée par l’administration du Studio.</p>}
+    <h2>Modèle de rédaction</h2>
     {!access?.canManageConnections
       ? <p>La connexion est gérée par l’administration du Studio.</p>
       : hostingManaged

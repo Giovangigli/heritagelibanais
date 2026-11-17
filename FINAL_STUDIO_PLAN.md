@@ -2,7 +2,7 @@
 
 Updated 17 November 2026. This is the release checklist for `apps/online`. The social export button and current social editing UI remain available.
 
-The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 19). Its WordPress and Brevo production connections still need the checks below before Joseph's full demo.
+The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 20). Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
 
 ## Website publication
 
