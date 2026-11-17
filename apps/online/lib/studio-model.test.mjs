@@ -26,6 +26,6 @@ test('an event still requires the date, start time and place, and photo mode req
 });
 
 test('saved statuses map to four workflow steps', () => {
-  assert.deepEqual(STATUSES.map(workflowStepIndex), [0, 0, 1, 1, 2, 2, 3, 3]);
+  assert.deepEqual(STATUSES.map(workflowStepIndex), [0, 0, 1, 1, 2, 2, 3, 3, 3, 3]);
   assert.equal(workflowStepIndex(undefined), 0);
 });

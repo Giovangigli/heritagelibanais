@@ -3,6 +3,8 @@ import {renderStoryEmail,renderEventEmail} from './brevo-email.mjs';
 import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
+import {validate} from '../public/private-studio/studio-model.mjs';
+import {publishWordPressPost,trashWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
 const WEBHOOK='https://giovangigli.app.n8n.cloud/webhook/heritage-studio-draft';
 const MAX_BODY=12*1024*1024;
 const encoder=new TextEncoder();
@@ -36,6 +38,11 @@ export async function decryptToken(value,env){
 async function connection(env,access){
   if(access.role!=='personal'&&env.N8N_STUDIO_WEBHOOK_TOKEN)return env.N8N_STUDIO_WEBHOOK_TOKEN;
   const row=await database(env).prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').bind(access.workspaceUserId).first();
+  return row?decryptToken(row.encrypted_token,env):null;
+}
+async function wordpressConnection(env,access){
+  if(env.WORDPRESS_ACCESS_TOKEN)return env.WORDPRESS_ACCESS_TOKEN;
+  const row=await database(env).prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').bind('wordpress:'+access.workspaceUserId).first();
   return row?decryptToken(row.encrypted_token,env):null;
 }
 async function upstream(payload,token,fetchImpl,timeout=25000){
@@ -79,6 +86,84 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
     if(path==='/api/access'&&request.method==='GET'){
       const {role,canManageConnections,canScheduleMailing}=access;
       return json({role,canManageConnections,canScheduleMailing,storageScope:await studioStorageScope(user,access)});
+    }
+    if(path==='/api/publication/status'&&request.method==='GET'){
+      try{
+        const token=await wordpressConnection(env,access);
+        if(!token)return json({connected:false,reason:'missing',managed:Boolean(env.WORDPRESS_ACCESS_TOKEN)});
+        await verifyWordPressToken(token,fetchImpl);
+        return json({connected:true,reason:null,managed:Boolean(env.WORDPRESS_ACCESS_TOKEN)});
+      }catch{return json({connected:false,reason:'unavailable',managed:Boolean(env.WORDPRESS_ACCESS_TOKEN)});}
+    }
+    if(path==='/api/publication/setup'&&request.method==='POST'){
+      if(!access.canManageConnections)throw error('La connexion WordPress est réservée à l’administration du Studio.',403);
+      if(env.WORDPRESS_ACCESS_TOKEN)throw error('La connexion WordPress est gérée dans les réglages de l’hébergement.',409);
+      const {token}=await bodyJson(request);
+      if(typeof token!=='string'||token.trim().length<20||token.length>500||/[\r\n]/.test(token))throw error('Saisissez un jeton WordPress complet.',400);
+      await verifyWordPressToken(token.trim(),fetchImpl);
+      const encrypted=await encryptToken(token.trim(),env);
+      await database(env).prepare('INSERT INTO studio_connections (user_id,encrypted_token,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET encrypted_token=excluded.encrypted_token,updated_at=excluded.updated_at').bind('wordpress:'+access.workspaceUserId,encrypted,new Date().toISOString()).run();
+      return json({ok:true});
+    }
+    if(path==='/api/publication/list'&&request.method==='GET'){
+      const rows=await database(env).prepare('SELECT post_id,title,type,url,status,created_at FROM studio_wordpress_publications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(access.workspaceUserId).all();
+      return json({posts:rows.results||[]});
+    }
+    if(path==='/api/publication/publish'&&request.method==='POST'){
+      const {reviewer,revision}=await bodyJson(request);
+      if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision))throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
+      const db=database(env);
+      const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
+      if(!row||row.revision!==revision)throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
+      const state=JSON.parse(row.state_json);
+      let next;
+      try{next=validate(state,reviewer);}catch(e){throw error(e.message,409);}
+      const proposal=state.proposals.at(-1);
+      const digest=await crypto.subtle.digest('SHA-256',encoder.encode(JSON.stringify([access.workspaceUserId,proposal.at,proposal.number,proposal.output])));
+      const slug='studio-'+Array.from(new Uint8Array(digest)).slice(0,12).map(x=>x.toString(16).padStart(2,'0')).join('');
+      const prior=await db.prepare('SELECT post_id,url,status FROM studio_wordpress_publications WHERE slug = ? AND user_id = ?').bind(slug,access.workspaceUserId).first();
+      if(prior?.status==='trash')throw error('Cette version a été retirée du site. Créez une nouvelle version avant de republier.',409);
+      const images=[];
+      if(!prior?.post_id&&proposal.basis.mediaMode==='photos'){
+        for(const item of (proposal.basis.media||[]).filter(entry=>entry.admis!==false)){
+          if(!item.id||!item.credit?.trim()||!item.rights?.trim())throw error('Complétez le crédit et les droits de chaque image avant publication.',409);
+          const object=await env.BUCKET?.get(access.workspaceUserId+'/media/'+item.id);
+          if(!object)throw error('Une image du dossier est introuvable dans le stockage privé.',409);
+          const contentType=object.httpMetadata?.contentType;
+          if(!['image/png','image/jpeg','image/webp'].includes(contentType))throw error('WordPress accepte ici les images PNG, JPEG et WebP. Convertissez les autres formats avant publication.',409);
+          const bytes=await object.arrayBuffer();
+          if(bytes.byteLength>10*1024*1024)throw error('Une image dépasse 10 Mo. Réduisez-la avant publication.',413);
+          images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit:item.credit});
+        }
+      }
+      const post=prior?.post_id?{id:prior.post_id,url:prior.url,status:'publish'}:await publishWordPressPost(await wordpressConnection(env,access),proposal,slug,fetchImpl,images);
+      await db.prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET post_id=excluded.post_id,url=excluded.url,status=excluded.status').bind(slug,access.workspaceUserId,post.id,proposal.output.title,proposal.output.contentType||proposal.basis.contentType||'recit',post.url,'publish',new Date().toISOString()).run();
+      next.draft={...next.draft,localSimulation:false,wordpressStatus:'publish',wordpressPostId:post.id,wordpressUrl:post.url,wordpressSlug:slug};
+      next.status='Publié';
+      next.history.push({status:'Publié',at:new Date().toISOString(),note:`Publication WordPress n°${post.id}`});
+      const saved=await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(next),new Date().toISOString(),access.workspaceUserId,revision).run();
+      if(!saved.meta.changes)throw error('La publication est en ligne, mais le dossier a changé. Rechargez avant toute autre action.',409);
+      return json({state:next,revision:revision+1,post});
+    }
+    if(path==='/api/publication/trash'&&request.method==='POST'){
+      const {revision,postId}=await bodyJson(request);
+      if(!Number.isSafeInteger(postId)||postId<1)throw error('Référence de publication invalide.',400);
+      const db=database(env);
+      const tracked=await db.prepare('SELECT post_id,status FROM studio_wordpress_publications WHERE post_id = ? AND user_id = ?').bind(postId,access.workspaceUserId).first();
+      if(!tracked||tracked.status!=='publish')throw error('Cette publication n’est pas active dans le Studio.',403);
+      await trashWordPressPost(await wordpressConnection(env,access),postId,fetchImpl);
+      await db.prepare('UPDATE studio_wordpress_publications SET status = ? WHERE post_id = ? AND user_id = ?').bind('trash',postId,access.workspaceUserId).run();
+      const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
+      if(row&&row.revision===revision){
+        const state=JSON.parse(row.state_json);
+        if(state.draft?.wordpressPostId===postId){
+          state.draft.wordpressStatus='trash';state.status='Retiré du site';
+          state.history.push({status:'Retiré du site',at:new Date().toISOString(),note:`Publication WordPress n°${postId} placée dans la corbeille`});
+          const saved=await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(state),new Date().toISOString(),access.workspaceUserId,revision).run();
+          if(saved.meta.changes)return json({state,revision:revision+1});
+        }
+      }
+      return json({state:null,revision:null});
     }
     if(path.startsWith('/api/mailing/')){
       const result=await handleMailingRequest(path,request,env,user,{db:database(env),bodyJson,encryptToken,decryptToken,fetchImpl,access});

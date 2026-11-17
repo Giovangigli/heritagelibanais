@@ -161,15 +161,18 @@
           </div>
         </section>
         <section id="validation-panel" class="panel validation-panel" aria-labelledby="validation-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title" tabindex="-1">Validation finale</h2><p>Vérifiez le texte et les visuels de la proposition avant de préparer le brouillon du site.</p></div>
+          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title" tabindex="-1">Validation finale</h2><p>Vérifiez le texte et les visuels. Valider publie immédiatement le Récit ou l’Événement sur le site.</p></div>
+          <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
+          <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Le jeton reste chiffré côté serveur.</p><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button></details>
           <label class="full-label" for="reviewer">Validé par <input id="reviewer" placeholder="Nom de la personne responsable"></label>
           <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu le texte et les visuels de cette version.</label>
-          <div class="action-row"><button id="validate" type="button" class="button primary">Valider et préparer le brouillon</button></div>
+          <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
         </section>
         <section id="draft-panel" class="panel draft-panel" aria-labelledby="draft-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 04</p><h2 id="draft-title" tabindex="-1">Brouillon du site</h2><p>Aperçu de la carte telle qu’elle pourrait apparaître sur le site.</p></div>
-          <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/logo-mark.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span class="draft-chip">STATUT WORDPRESS SIMULÉ · BROUILLON</span></div></article>
+          <div class="panel-head"><p class="eyebrow">Étape 04</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>
+          <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/logo-mark.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span id="wordpress-status" class="draft-chip">PUBLICATION WORDPRESS</span></div></article>
           <p id="draft-details" class="hint"></p>
+          <div class="action-row"><a id="wordpress-link" class="button secondary" href="#" target="_blank" rel="noopener" hidden>Voir sur le site</a><button id="prepare-mailing" type="button" class="button primary">Préparer la lettre</button><button id="wordpress-trash" type="button" class="button secondary">Retirer du site</button></div>
           <section class="email-workbench" aria-labelledby="email-workbench-title">
             <h3 id="email-workbench-title">Préparer la lettre</h3>
             <p class="hint">Prévisualisez un e-mail à partir de ce dossier validé. Aucun e-mail n’est envoyé depuis cet aperçu.</p>
@@ -193,7 +196,8 @@
     <p id="cloud-save-status" class="hint" role="status"></p>
     <p id="message" class="feedback" role="status" aria-live="polite"></p>
     <section class="history" aria-labelledby="history-title"><h2 id="history-title">Historique des étapes</h2><ol id="history-list"></ol></section>
-    <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Toute proposition reste à relire ; aucune publication WordPress automatique.</p>
+    <section class="history" aria-labelledby="publications-title"><h2 id="publications-title">Publications du site</h2><button id="publications-refresh" type="button" class="button secondary">Actualiser</button><p id="publications-status" class="hint" role="status"></p><ul id="publications-list"></ul></section>
+    <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Une validation publie l’article sur WordPress.</p>
     </div>
     <section id="mailing-view" class="mailing-view" aria-labelledby="mailing-title" hidden>
       <div class="panel-head"><p class="eyebrow">La lettre / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez un récit publié ou un événement à venir. Le Studio vérifiera les abonnés confirmés, créera les campagnes Brevo et répartira jusqu’à 400 destinataires sur deux jours.</p></div>
@@ -206,6 +210,8 @@
         <div class="mailing-card-head"><h3>1. Publication</h3><button id="mailing-refresh" type="button" class="button secondary">Actualiser les publications</button></div>
         <label>Récit ou événement publié <select id="mailing-post"><option value="">Chargement des publications…</option></select></label>
         <p id="mailing-post-note" class="hint" role="status"></p>
+        <label>Objet de l’e-mail <input id="mailing-subject-input" type="text" maxlength="160" placeholder="À lire · …"></label>
+        <label>Texte d’aperçu <input id="mailing-preheader-input" type="text" maxlength="220" placeholder="Une phrase visible dans la boîte de réception"></label>
         <label>Introduction de l’e-mail <textarea id="mailing-intro" rows="4" placeholder="Présentez ce récit ou cet événement en quelques phrases."></textarea></label>
       </div>
       <div class="mailing-card">

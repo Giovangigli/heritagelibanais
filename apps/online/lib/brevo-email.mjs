@@ -36,7 +36,7 @@ export function renderStoryEmail(input) {
   }
   parts.push(button('Voir le récit', url));
   if (input.sources) parts.push(`<p style="margin:0;color:#5C675E;font:12px/1.5 Arial,sans-serif">Sources et crédits : ${escapeHtml(input.sources)}</p>`);
-  return { subject: `À lire · ${title}`, previewText, html: shell('Récit en images', title, parts.join(''), previewText) };
+  return { subject: String(input.subject || `À lire · ${title}`).trim(), previewText, html: shell('Récit en images', title, parts.join(''), previewText) };
 }
 
 export function renderEventEmail(input) {
@@ -46,7 +46,7 @@ export function renderEventEmail(input) {
   const previewText = String(input.previewText || `${input.date}${input.city ? ` · ${input.city}` : ''}`).trim();
   const details = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0 0">${row('Date', input.date)}${row('Horaire', input.time)}${row('Lieu', input.venue)}${row('Ville', input.city)}${row('Tarif', input.price)}</table>`;
   const body = image(input.imageUrl, input.imageAlt || title, input.imageCredit) + paragraph(input.intro) + details + button(input.registrationUrl ? 'S’inscrire' : 'Voir l’évènement', input.registrationUrl ? httpsUrl(input.registrationUrl, url) : url) + (input.practicalNote ? paragraph(input.practicalNote) : '');
-  return { subject: `Rencontre · ${title} · ${input.date}`, previewText, html: shell('Nos rencontres', title, body, previewText) };
+  return { subject: String(input.subject || `Rencontre · ${title} · ${input.date}`).trim(), previewText, html: shell('Nos rencontres', title, body, previewText) };
 }
 
 export function renderWelcomeTemplate() {

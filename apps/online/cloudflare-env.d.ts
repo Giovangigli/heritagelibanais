@@ -5,6 +5,9 @@ declare namespace Cloudflare {
     STUDIO_CONNECTION_KEY?: string;
     N8N_STUDIO_WEBHOOK_TOKEN?: string;
     BREVO_API_KEY?: string;
+    WORDPRESS_ACCESS_TOKEN?: string;
+    BREVO_SENDER_EMAIL?: string;
+    BREVO_REPLY_TO?: string;
     STUDIO_OWNER_EMAIL?: string;
     STUDIO_OWNER_USER_ID?: string;
     STUDIO_EDITOR_EMAILS?: string;

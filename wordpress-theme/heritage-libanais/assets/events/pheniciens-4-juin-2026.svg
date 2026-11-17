@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Phéniciens — conférence Héritage Libanais du 4 juin 2026</title>
+  <desc id="desc">Illustration dans la famille graphique du site : bateau à voile du sceau, colonnade et cèdre à branches étagées, en aplats vert pâle et beige avec des accents rouges.</desc>
+  <rect width="1080" height="1080" fill="#E6DDCB"/>
+  <rect width="1080" height="16" fill="#B82F2B"/>
+  <path d="M76 196h78" stroke="#B82F2B" stroke-width="8"/>
+  <text x="177" y="205" fill="#123C32" font-size="24" font-family="DM Sans,Arial,sans-serif" font-weight="700" letter-spacing="4">CONFÉRENCE / 4 JUIN 2026</text>
+  <circle cx="540" cy="536" r="260" fill="#DCE8DF"/>
+  <circle cx="540" cy="536" r="284" fill="none" stroke="#A6BAAA" stroke-width="2"/>
+  <circle cx="746" cy="365" r="57" fill="#B82F2B"/>
+  <path d="M100 746 301 495 488 746Z" fill="#A6BAAA"/>
+  <path d="M100 746 301 495 357 568 253 746Z" fill="#789A88"/>
+  <g transform="translate(341 410) scale(1.2)"><ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M17 210H239V227H17Z" fill="#064E38" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M31 195H225V210H31Z" fill="#B9A98E" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M42 80H221V102H42Z" fill="#064E38" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M42 69H221V80H42Z" fill="#B9A98E" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M52 102H211V115H52Z" fill="#B9A98E" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M35 69 53 52H169L184 62H221V69Z" fill="#064E38" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M47 46H177L169 52H53Z" fill="#B9A98E" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M54 115H74V195H54ZM84 115H104V195H84ZM114 115H134V195H114ZM144 115H164V195H144ZM174 115H194V195H174Z" fill="#064E38" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M53 115H75V122H53ZM83 115H105V122H83ZM113 115H135V122H113ZM143 115H165V122H143ZM173 115H195V122H173Z" fill="#B9A98E" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M206 111H224V195H206Z" fill="#A6BAAA" />
+</g>
+  <g transform="translate(652 445) scale(1.3)"><ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M118 27H138L151 43H169V58L214 78L185 97L151 94L216 120L186 141L151 137L222 168L186 190L145 185L139 231H117L111 185L70 190L34 168L105 137L70 141L40 120L105 94L71 97L42 78L87 58V43H105Z" fill="#064E38" />
+</g>
+  <g transform="translate(136 425) scale(2.05)"><ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M0 126H55L69 121H148L163 126H220V145H0Z" fill="#DCE8DF" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M0 137H87L103 132H179L191 137H220V151H0Z" fill="#A6BAAA" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M0 151H38L49 147H104L116 151H220V158H0Z" fill="#789A88" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M79 43V117" stroke="#123C32" stroke-width="3" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M81 45 156 63 156 110 81 99Z" fill="#F8F6F0" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M81 45 95 48V101L81 99ZM109 52 123 56V105L109 103ZM137 59 151 62V109L137 107Z" fill="#B82F2B" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M19 116H194L178 132H37Z" fill="#123C32" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M20 118 12 96 22 103 34 118ZM193 118 202 96 192 103 179 118Z" fill="#123C32" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" d="M38 119H177" stroke="#B9A98E" stroke-width="3" /></g>
+  <path d="M152 764h776" stroke="#123C32" stroke-width="3"/>
+  <path d="M76 874h928" stroke="#123C32" stroke-width="2" opacity=".35"/>
+  <text x="76" y="946" fill="#123C32" font-size="25" font-family="DM Sans,Arial,sans-serif" font-weight="700" letter-spacing="4">HÉRITAGE LIBANAIS</text>
+  <circle cx="987" cy="935" r="15" fill="#B82F2B"/>
+</svg>

@@ -131,6 +131,12 @@ test('publication and preview survive missing Brevo credentials',async()=>{
   })).json();
   assert.ok(preview.contentHash);
   assert.match(preview.email.subject,/cèdre/);
+  const edited=await (await call('preview',{
+    fetchImpl,method:'POST',body:{postId:12,intro:'Un nouveau récit à découvrir cette semaine.',subject:'Un cèdre à découvrir',previewText:'Notre nouveau récit est en ligne.'},
+  })).json();
+  assert.equal(edited.email.subject,'Un cèdre à découvrir');
+  assert.equal(edited.email.previewText,'Notre nouveau récit est en ligne.');
+  assert.notEqual(edited.contentHash,preview.contentHash);
 });
 
 test('an editor schedules 400 approved contacts across two days, with shared history and an individual audit',async()=>{

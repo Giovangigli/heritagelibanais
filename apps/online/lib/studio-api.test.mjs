@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {handleStudioRequest,encryptToken,decryptToken} from './studio-api.mjs';
 import {buildCompositionInput} from '../public/private-studio/composition-v2.mjs';
+import {emptyState,saveDossier,createProposal,markReady} from '../public/private-studio/studio-model.mjs';
 const origin='https://studio.example';
 const user={userId:'owner',email:'owner@example.org'};
 const editor={userId:'editor',email:'editor@example.org'};
@@ -15,12 +16,14 @@ function configureWorkspace(env){
   });
 }
 function setup(){
-  const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../drizzle/0000_productive_mister_fear.sql',import.meta.url),'utf8'));
+  const sql=new DatabaseSync(':memory:');
+  for(const name of ['0000_productive_mister_fear','0001_past_gressill','0002_empty_victor_mancha'])sql.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
   const objects=new Map();
   const env={
     STUDIO_CONNECTION_KEY:Buffer.alloc(32,7).toString('base64'),
     DB:{prepare(query){return {bind(...args){return {
       first:async()=>sql.prepare(query).get(...args)||null,
+      all:async()=>({results:sql.prepare(query).all(...args)}),
       run:async()=>({meta:{changes:Number(sql.prepare(query).run(...args).changes)}}),
     };}};}},
     BUCKET:{
@@ -144,4 +147,54 @@ test('a story with no recognized title gets an actionable message without a mode
   assert.equal(result.status,400);
   assert.match((await result.json()).error,/Titre du récit/);
   assert.equal(calls,0);
+});
+test('validation publishes once and Studio can move only its tracked post to WordPress Trash',async()=>{
+  const {env,sql}=setup();env.WORDPRESS_ACCESS_TOKEN='server-secret';
+  const dossier={...emptyState().dossier,title:'Le cèdre',sourceText:'Le cèdre est un symbole du Liban.'};
+  const state=markReady(createProposal(saveDossier(emptyState(),dossier)));
+  sql.prepare('INSERT INTO studio_sessions VALUES (?,?,?,?)').run(user.userId,JSON.stringify(state),1,'now');
+  const calls=[];
+  const fetchImpl=async(url,init)=>{
+    calls.push({url,init});assert.equal(init.headers.Authorization,'Bearer server-secret');
+    if(init.method==='GET')return Response.json([]);
+    if(init.method==='POST')return Response.json({id:151,status:'publish',link:'https://heritage-libanais.fr/le-cedre/'});
+    if(init.method==='DELETE')return Response.json({id:151,status:'trash'});
+    throw new Error('Unexpected WordPress method');
+  };
+  const published=await handleStudioRequest(request('/api/publication/publish','POST',{reviewer:'Joseph',revision:1}),env,user,{fetchImpl});
+  assert.equal(published.status,200);
+  const result=await published.json();assert.equal(result.state.status,'Publié');assert.equal(result.state.draft.wordpressPostId,151);
+  assert.equal(calls.filter(call=>call.init.method==='POST').length,1);
+  assert.equal((await handleStudioRequest(request('/api/publication/publish','POST',{reviewer:'Joseph',revision:1}),env,user,{fetchImpl})).status,409);
+  const list=await(await handleStudioRequest(request('/api/publication/list'),env,user)).json();
+  assert.equal(list.posts[0].title,'Le cèdre');
+  const trashed=await handleStudioRequest(request('/api/publication/trash','POST',{revision:2,postId:151}),env,user,{fetchImpl});
+  assert.equal(trashed.status,200);assert.equal((await trashed.json()).state.status,'Retiré du site');
+  assert.match(calls.at(-1).url,/\/posts\/151\?force=false$/);
+  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'trash');
+  assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{revision:3,postId:151}),env,user,{fetchImpl})).status,403);
+});
+test('owner configures WordPress once and an editor can use the shared encrypted connection',async()=>{
+  const {env,sql}=setup();configureWorkspace(env);
+  const secret='wordpress-test-token-long-enough';
+  const fetchImpl=async(_url,options)=>{
+    assert.equal(options.headers.Authorization,'Bearer '+secret);
+    return Response.json([]);
+  };
+  assert.equal((await handleStudioRequest(request('/api/publication/setup','POST',{token:secret}),env,editor,{fetchImpl})).status,403);
+  assert.equal((await handleStudioRequest(request('/api/publication/setup','POST',{token:secret}),env,user,{fetchImpl})).status,200);
+  const stored=sql.prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').get('wordpress:owner').encrypted_token;
+  assert(!stored.includes(secret));
+  const status=await(await handleStudioRequest(request('/api/publication/status'),env,editor,{fetchImpl})).json();
+  assert.equal(status.connected,true);
+  assert(!JSON.stringify(status).includes(secret));
+});
+test('an older Studio publication remains removable after a new dossier replaces the current session',async()=>{
+  const {env,sql}=setup();env.WORDPRESS_ACCESS_TOKEN='server-secret';
+  sql.prepare('INSERT INTO studio_wordpress_publications VALUES (?,?,?,?,?,?,?,?)').run('studio-0123456789abcdef01234567',user.userId,222,'Ancien récit','recit','https://heritage-libanais.fr/ancien/','publish','now');
+  const response=await handleStudioRequest(request('/api/publication/trash','POST',{revision:0,postId:222}),env,user,{fetchImpl:async(_url,init)=>{assert.equal(init.method,'DELETE');return Response.json({id:222,status:'trash'});}});
+  assert.equal(response.status,200);assert.equal((await response.json()).state,null);
+  const list=await(await handleStudioRequest(request('/api/publication/list'),env,user)).json();
+  assert.equal(list.posts[0].status,'trash');
+  assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{revision:0,postId:222}),env,{userId:'other'})).status,403);
 });

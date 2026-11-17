@@ -19,3 +19,13 @@ export const mailingJobs=sqliteTable('studio_mailing_jobs',{
   createdAt:text('created_at').notNull(),
   updatedAt:text('updated_at').notNull(),
 });
+export const wordpressPublications=sqliteTable('studio_wordpress_publications',{
+  slug:text('slug').primaryKey(),
+  userId:text('user_id').notNull(),
+  postId:integer('post_id').notNull(),
+  title:text('title').notNull(),
+  type:text('type').notNull(),
+  url:text('url').notNull(),
+  status:text('status').notNull(),
+  createdAt:text('created_at').notNull(),
+});

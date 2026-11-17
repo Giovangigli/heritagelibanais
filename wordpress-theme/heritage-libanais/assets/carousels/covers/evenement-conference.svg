@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="Illustration de la conférence Héritage Libanais">
+  <rect width="1080" height="1080" fill="#E6DDCB"/>
+  <rect width="1080" height="16" fill="#B82F2B"/>
+  <path d="M76 196h78" stroke="#B82F2B" stroke-width="8"/>
+  <text x="177" y="205" fill="#123C32" font-size="24" font-family="Arial,sans-serif" font-weight="bold" letter-spacing="4">CONFÉRENCE / 8 OCTOBRE</text>
+  <path d="M153 806V595c0-180 155-325 345-325s345 145 345 325v211" fill="none" stroke="#123C32" stroke-width="14" opacity=".33"/>
+  <path d="M243 805V598c0-130 114-234 254-234s254 104 254 234v207" fill="none" stroke="#123C32" stroke-width="7" opacity=".22"/>
+  <circle cx="498" cy="522" r="208" fill="#DCE8DF"/>
+  <path d="M487 377h22l23 25h28v23l70 31-47 29-49-5 98 38-48 31-50-7 102 48-52 33-55-7-12 93h-38l-12-93-55 7-52-33 102-48-50 7-48-31 98-38-49 5-47-29 70-31v-23h28z" fill="#1B5A45"/>
+  <path d="M152 805h692" stroke="#123C32" stroke-width="3"/>
+  <path d="M76 874h928" stroke="#123C32" stroke-width="2" opacity=".35"/>
+  <text x="76" y="946" fill="#123C32" font-size="25" font-family="Arial,sans-serif" font-weight="bold" letter-spacing="4">HÉRITAGE LIBANAIS</text>
+  <circle cx="987" cy="935" r="15" fill="#B82F2B"/>
+</svg>

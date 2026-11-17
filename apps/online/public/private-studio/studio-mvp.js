@@ -1,4 +1,4 @@
-import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, markReady, validate, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
+import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, markReady, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -87,6 +87,39 @@ let selectedVersion = state.manualDraft?.fromVersion ?? state.proposals.at(-1)?.
 let slideIndex = 0;
 const session = createStudioSession();
 let resetSnapshot = null;
+
+async function refreshWordPressConnection(){
+  const status=$('wordpress-connection-status');
+  status.textContent='Vérification de la connexion WordPress…';
+  try{
+    const response=await fetch('/api/publication/status',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||'Connexion indisponible.');
+    status.textContent=result.connected?'WordPress est connecté. La validation publiera immédiatement.':result.reason==='missing'?'La connexion WordPress doit être configurée avant publication.':'La connexion WordPress doit être vérifiée par l’administrateur.';
+    $('wordpress-setup').hidden=!studioAccess.canManageConnections||result.managed||result.connected;
+  }catch{status.textContent='La connexion WordPress est momentanément indisponible.';}
+}
+async function refreshPublicationList(){
+  const status=$('publications-status'),list=$('publications-list');
+  status.textContent='Lecture des publications…';
+  try{
+    const response=await fetch('/api/publication/list',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||'Liste indisponible.');
+    list.replaceChildren();
+    for(const post of result.posts||[]){
+      const item=document.createElement('li');
+      const link=document.createElement('a');link.href=post.url;link.target='_blank';link.rel='noopener';link.textContent=(post.type==='evenement'?'Événement · ':'Récit · ')+post.title;
+      const label=document.createElement('span');label.textContent=post.status==='publish'?' · En ligne':' · Dans la corbeille';
+      item.append(link,label);
+      if(post.status==='publish'){
+        const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Retirer du site';
+        button.addEventListener('click',()=>trashPublication(post.post_id));item.append(button);
+      }
+      list.append(item);
+    }
+    status.textContent=result.posts?.length?`${result.posts.length} publication(s) créées depuis le Studio.`:'Aucune publication créée depuis le Studio.';
+  }catch(error){status.textContent=error.message;}
+}
 
 function syncGenerationControls() {
   const running = Boolean(session.active);
@@ -537,7 +570,7 @@ function renderRevisionControls(entry) {
   $('mark-ready').hidden = pending || !isLatest || state.status !== 'Proposition';
   $('validation-panel').hidden = pending || !isLatest || state.status !== 'Prêt à valider';
   $('draft-panel').hidden = pending || !state.draft;
-  $('archive').hidden = pending || state.status !== 'Carte site en brouillon';
+  $('archive').hidden = pending || !state.draft;
   return pending;
 }
 function renderVersionFeedback() {
@@ -783,7 +816,7 @@ function render() {
       emailDraftKey = draft.validatedAt;
       $('email-title').value = draft.title || '';
       $('email-intro').value = draft.summary || '';
-      $('email-url').value = state.proposals.find(item => item.number === draft.version)?.basis?.publishedUrl || '';
+      $('email-url').value = draft.wordpressUrl || '';
       $('email-preview-status').textContent = '';
       $('email-preview-panel').hidden = true;
     }
@@ -791,7 +824,13 @@ function render() {
     $('card-meta').textContent = draft.contentType === 'evenement' ? [draft.event?.startDate, draft.event?.startTime, draft.event?.venue].filter(Boolean).join(' · ') : [draft.theme, draft.place, draft.date].filter(Boolean).join(' · ');
     $('draft-card-title').textContent = draft.title;
     $('card-summary').textContent = draft.summary;
-    $('draft-details').textContent = 'Version V' + draft.version + ' · Validée par ' + draft.reviewer + ' · Sources et crédits conservés dans le dossier local.';
+    const live = draft.wordpressStatus === 'publish';
+    $('wordpress-status').textContent = live ? 'PUBLIÉ SUR WORDPRESS' : 'RETIRÉ DU SITE';
+    $('wordpress-link').hidden = !live;
+    $('wordpress-link').href = live ? draft.wordpressUrl : '#';
+    $('prepare-mailing').hidden = !live;
+    $('wordpress-trash').hidden = !live;
+    $('draft-details').textContent = 'Version V' + draft.version + ' · Validée par ' + draft.reviewer + ' · ' + (live ? 'Article n°' + draft.wordpressPostId + ' publié.' : 'Article placé dans la corbeille WordPress.');
   }
   const history = $('history-list'); history.replaceChildren();
   state.history.slice().reverse().forEach((event) => {
@@ -1121,9 +1160,58 @@ $('back-to-dossier').addEventListener('click', () => {
 $('mark-ready').addEventListener('click', () => {
   if (act(() => markReady(state), 'Proposition prête pour la validation finale.')) focusStep('validation-title');
 });
-$('validate').addEventListener('click', () => {
+$('validate').addEventListener('click', async () => {
   if (!$('final-confirmation').checked) return feedback('Confirmez la relecture du texte et des visuels.', true);
-  if (act(() => validate(state, $('reviewer').value), 'Aperçu du brouillon préparé.')) focusStep('draft-title');
+  const button=$('validate');button.disabled=true;feedback('Publication sur WordPress en cours…');
+  try {
+    clearTimeout(cloudSaveTimer);
+    while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
+    if(cloudPending) await saveCloudSession();
+    if(cloudPending||cloudConflict) throw new Error('Enregistrez le dossier en ligne avant de publier.');
+    const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:$('reviewer').value,revision:cloudRevision}),signal:AbortSignal.timeout(25000)});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||'La publication a échoué.');
+    state=result.state;cloudRevision=result.revision;
+    localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
+    render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la lettre.');focusStep('draft-title');
+  } catch(error) { feedback(error.message,true); }
+  finally {button.disabled=false;}
+});
+$('wordpress-connect').addEventListener('click',async()=>{
+  if(!studioAccess.canManageConnections)return;
+  const button=$('wordpress-connect');button.disabled=true;
+  $('wordpress-connection-status').textContent='Vérification du jeton WordPress…';
+  try{
+    const response=await fetch('/api/publication/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('wordpress-token').value}),signal:AbortSignal.timeout(20000)});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||'Connexion refusée.');
+    $('wordpress-token').value='';await refreshWordPressConnection();
+  }catch(error){$('wordpress-connection-status').textContent=error.message;}finally{button.disabled=false;}
+});
+async function trashPublication(postId){
+  if(!window.confirm('Retirer cette publication du site et la placer dans la corbeille WordPress ?'))return;
+  $('wordpress-trash').disabled=true;
+  try{
+    const response=await fetch('/api/publication/trash',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:cloudRevision,postId}),signal:AbortSignal.timeout(25000)});
+    const result=await response.json();if(!response.ok)throw new Error(result.error||'La suppression a échoué.');
+    if(result.state){
+      state=result.state;cloudRevision=result.revision;
+      localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
+      render();
+    }
+    await refreshPublicationList();feedback('Publication placée dans la corbeille WordPress.');
+  }catch(error){feedback(error.message,true);}finally{$('wordpress-trash').disabled=false;}
+}
+$('wordpress-trash').addEventListener('click',()=>{if(state.draft?.wordpressPostId)trashPublication(state.draft.wordpressPostId);});
+$('publications-refresh').addEventListener('click',refreshPublicationList);
+$('prepare-mailing').addEventListener('click',async()=>{
+  if(!state.draft?.wordpressPostId)return;
+  mailingLoaded=true;mailingTab('mailing');await mailingRefresh();
+  const id=String(state.draft.wordpressPostId);
+  if([...$('mailing-post').options].some(option=>option.value===id)){
+    $('mailing-post').value=id;
+    $('mailing-intro').value=$('email-intro').value.trim()||state.draft.summary||'';
+    mailingInvalidate();saveMailingDraft();
+    $('mailing-post-note').textContent='Publication sélectionnée. Modifiez l’introduction, puis prévisualisez la lettre.';
+  }else $('mailing-post-note').textContent='La publication n’apparaît pas encore dans le catalogue WordPress. Actualisez dans quelques instants.';
 });
 $('email-preview-button').addEventListener('click', async () => {
   const draft = state.draft;
@@ -1174,10 +1262,14 @@ let mailingCheckedRequest=0;
 const mailingStorageKey = storageKey + '-mailing';
 function saveMailingDraft() {
   try {
-    localStorage.setItem(mailingStorageKey, JSON.stringify({postId:$('mailing-post').value,intro:$('mailing-intro').value}));
+    localStorage.setItem(mailingStorageKey, JSON.stringify({postId:$('mailing-post').value,intro:$('mailing-intro').value,subject:$('mailing-subject-input').value,previewText:$('mailing-preheader-input').value}));
   } catch { /* The open draft remains editable. */ }
 }
 function mailingInvalidate(){mailingPreview=null;mailingRequestId=null;$('mailing-preview-panel').hidden=true;$('mailing-confirm').checked=false;$('mailing-send').disabled=true;$('mailing-preview-status').textContent='';}
+function mailingOverrides(){
+  const subject=$('mailing-subject-input').value.trim(),previewText=$('mailing-preheader-input').value.trim();
+  return {...(subject?{subject}:{}),...(previewText?{previewText}:{})};
+}
 function mailingTab(name){
   const mailing=name==='mailing';
   $('editor-intro').hidden=mailing;$('editor-view').hidden=mailing;$('mailing-view').hidden=!mailing;
@@ -1242,6 +1334,8 @@ async function mailingRefresh(){
     if (saved && mailingPosts.some(post => String(post.id) === saved.postId)) {
       select.value = saved.postId;
       $('mailing-intro').value = typeof saved.intro === 'string' ? saved.intro : '';
+      $('mailing-subject-input').value = typeof saved.subject === 'string' ? saved.subject : '';
+      $('mailing-preheader-input').value = typeof saved.previewText === 'string' ? saved.previewText : '';
     } else if (mailingPreview) {
       mailingInvalidate();
     }
@@ -1263,10 +1357,12 @@ $('mailing-recheck').addEventListener('click',refreshMailingConnection);
 $('mailing-post').addEventListener('change',()=>{
   mailingInvalidate();const post=mailingPosts.find(x=>x.id===Number($('mailing-post').value));
   $('mailing-intro').value=post?.intro||'';
+  $('mailing-subject-input').value='';$('mailing-preheader-input').value='';
   saveMailingDraft();
   $('mailing-post-note').textContent=post?(post.type==='evenement'?`Événement du ${post.date}. L’envoi est réservé aux dates à venir.`:`Récit publié le ${new Date(post.publishedAt).toLocaleDateString('fr-FR')}.`):'Choisissez une publication.';
 });
 $('mailing-intro').addEventListener('input',()=>{mailingInvalidate();saveMailingDraft();});
+for(const id of ['mailing-subject-input','mailing-preheader-input'])$(id).addEventListener('input',()=>{mailingInvalidate();saveMailingDraft();});
 $('mailing-connect').addEventListener('click',async()=>{
   if (!studioAccess.canManageConnections) return;
   const button=$('mailing-connect');button.disabled=true;$('mailing-connection-status').textContent='Vérification de la clé…';
@@ -1279,7 +1375,7 @@ $('mailing-preview').addEventListener('click',async()=>{
   if(!postId)return $('mailing-preview-status').textContent='Choisissez d’abord une publication.';
   mailingInvalidate();const button=$('mailing-preview');button.disabled=true;$('mailing-preview-status').textContent='Préparation de l’aperçu…';
   try{
-    mailingPreview=await mailingJson('/api/mailing/preview',{method:'POST',body:JSON.stringify({postId,intro})});
+    mailingPreview=await mailingJson('/api/mailing/preview',{method:'POST',body:JSON.stringify({postId,intro,...mailingOverrides()})});
     mailingRequestId=crypto.randomUUID();
     $('mailing-subject').textContent=mailingPreview.email.subject;$('mailing-preheader').textContent=mailingPreview.email.previewText;
     $('mailing-preview-frame').srcdoc=mailingPreview.email.html;$('mailing-preview-panel').hidden=false;
@@ -1294,7 +1390,7 @@ $('mailing-send').addEventListener('click',async()=>{
   mailingSending = true;
   const button=$('mailing-send');button.disabled=true;$('mailing-send-status').textContent='Création des listes et programmation dans Brevo…';
   try{
-    const job=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({postId:mailingPreview.post.id,intro:$('mailing-intro').value.trim(),contentHash:mailingPreview.contentHash,requestId:mailingRequestId,confirmed:true})});
+    const job=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({postId:mailingPreview.post.id,intro:$('mailing-intro').value.trim(),...mailingOverrides(),contentHash:mailingPreview.contentHash,requestId:mailingRequestId,confirmed:true})});
     mailingShowJob(job.job);$('mailing-send-status').textContent=job.job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
   }catch(e){$('mailing-send-status').textContent=e.message;try{const jobs=await mailingJson('/api/mailing/jobs');const job=jobs.jobs.find(x=>x.contentHash===mailingPreview?.contentHash);if(job)mailingShowJob(job);}catch{}}
   finally { mailingSending = false; mailingPreview = null; $('mailing-confirm').checked = false; }
@@ -1303,6 +1399,8 @@ $('correction-request').value=state.correctionRequest||'';
 renderStoryTemplates();
 setForm(); updateGaps(); render(); syncGenerationControls();
 refreshBridgeStatus();
+refreshWordPressConnection();
+refreshPublicationList();
 window.addEventListener('focus',()=>refreshBridgeStatus());
 new ResizeObserver(fitSlidePreview).observe($('slide-stage'));
 document.fonts.ready.then(fitSlidePreview);

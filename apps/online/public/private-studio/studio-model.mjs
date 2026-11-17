@@ -1,6 +1,6 @@
 export const STATUSES = [
   'À compléter', 'À vérifier', 'Proposition', 'Corrections demandées',
-  'Prêt à valider', 'Validé', 'Carte site en brouillon', 'Archivé',
+  'Prêt à valider', 'Validé', 'Carte site en brouillon', 'Archivé', 'Publié', 'Retiré du site',
 ];
 
 export function workflowStepIndex(status) {
@@ -13,6 +13,8 @@ export function workflowStepIndex(status) {
       return 2;
     case 'Carte site en brouillon':
     case 'Archivé':
+    case 'Publié':
+    case 'Retiré du site':
       return 3;
     default:
       return 0;

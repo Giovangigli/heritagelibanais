@@ -60,7 +60,7 @@ async function audience(key,fetchImpl){
   }
   return [...unique.values()].sort((a,b)=>a.id-b.id);
 }
-async function publicSender(key,fetchImpl){
+async function publicSender(key,fetchImpl,configuredEmail){
   let domain;
   try{domain=await brevo(key,'/senders/domains/heritage-libanais.fr',{fetchImpl});}
   catch(error){if(error.providerStatus===404)return null;throw error;}
@@ -68,7 +68,9 @@ async function publicSender(key,fetchImpl){
   if(domain?.verified!==true||domain?.authenticated!==true)return null;
   const senders=await brevo(key,'/senders',{fetchImpl});
   if(!Array.isArray(senders?.senders))throw failure('Les expéditeurs Brevo ne peuvent pas être vérifiés.',502);
-  return senders.senders.find(sender=>sender.active===true&&Number.isSafeInteger(sender.id)&&String(sender.email||'').toLowerCase().endsWith('@heritage-libanais.fr'))||null;
+  return senders.senders.find(sender=>sender.active===true&&Number.isSafeInteger(sender.id)&&(
+    configuredEmail?String(sender.email||'').toLowerCase()===configuredEmail.toLowerCase():String(sender.email||'').toLowerCase().endsWith('@heritage-libanais.fr')
+  ))||null;
 }
 function offsetForParis(utcDate){
   const tz=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',timeZoneName:'shortOffset'}).formatToParts(utcDate).find(x=>x.type==='timeZoneName')?.value||'GMT+1';
@@ -83,9 +85,11 @@ export function nextParisMorning(daysFromToday,now=new Date()){
 }
 async function resolvedEmail(input,fetchImpl){
   if(!Number.isSafeInteger(input?.postId)||typeof input.intro!=='string'||input.intro.trim().length<20||input.intro.length>1200)throw failure('Choisissez une publication et écrivez une introduction de 20 à 1 200 caractères.');
+  if(input.subject!==undefined&&(typeof input.subject!=='string'||input.subject.trim().length<5||input.subject.length>160))throw failure('L’objet doit contenir de 5 à 160 caractères.');
+  if(input.previewText!==undefined&&(typeof input.previewText!=='string'||input.previewText.trim().length<5||input.previewText.length>220))throw failure('Le texte d’aperçu doit contenir de 5 à 220 caractères.');
   const post=(await fetchPublishedContent(fetchImpl)).find(item=>item.id===input.postId);
   if(!post)throw failure('Cette publication n’est pas disponible pour un envoi.');
-  const common={title:post.title,intro:input.intro.trim(),url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt};
+  const common={title:post.title,intro:input.intro.trim(),url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt,subject:input.subject?.trim(),previewText:input.previewText?.trim()};
   const email=post.type==='evenement'?renderEventEmail({...common,date:post.date}):renderStoryEmail(common);
   return {post,email};
 }
@@ -115,7 +119,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
       connected=true;
       const plan=freeCampaignPlan(account);
       if(!plan)return checked('needs_configuration','plan_mismatch');
-      const [people,sender]=await Promise.all([audience(key,fetchImpl),publicSender(key,fetchImpl)]);
+      const [people,sender]=await Promise.all([audience(key,fetchImpl),publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL)]);
       if(!sender)return checked('needs_configuration','sender_not_ready',{eligible:people.length});
       if(quotaExhausted(plan))return checked('unavailable','quota_exhausted',{eligible:people.length,senderEmail:sender.email});
       return checked('ready',null,{eligible:people.length,senderEmail:sender.email,readyToSend:canScheduleMailing});
@@ -164,8 +168,9 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const people=await audience(key,fetchImpl);
     if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
     if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE} ; préparez une répartition supplémentaire.`,409);
-    const sender=await publicSender(key,fetchImpl);
+    const sender=await publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL);
     if(!sender)throw failure('Authentifiez heritage-libanais.fr et activez une adresse expéditrice sur ce domaine avant un envoi public.',409);
+    const replyTo=typeof env.BREVO_REPLY_TO==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.BREVO_REPLY_TO)?env.BREVO_REPLY_TO:sender.email;
     const batches=[];for(let i=0;i<people.length;i+=DAY_CAP)batches.push(people.slice(i,i+DAY_CAP));
     const now=new Date().toISOString(),job={id:crypto.randomUUID(),postId:post.id,title:post.title,type:post.type,contentHash,actorUserId:user.userId,createdAt:now,status:'preparing',batches:[],error:null};
     await db.prepare('INSERT OR IGNORE INTO studio_mailing_jobs (id,user_id,request_id,content_hash,state_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').bind(job.id,workspaceUserId,input.requestId,contentHash,JSON.stringify(job),now,now).run();
@@ -183,7 +188,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
           if(added?.contacts?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
         }
         part.status='list_ready';await saveJob(db,job);
-        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`La lettre · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo:sender.email,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
+        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`La lettre · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
         if(!Number.isSafeInteger(campaign?.id))throw failure('La campagne Brevo n’a pas été créée.',502);
         part.campaignId=campaign.id;part.status='campaign_created';await saveJob(db,job);
         let detail=await brevo(key,`/emailCampaigns/${campaign.id}?excludeHtmlContent=true`,{fetchImpl});
