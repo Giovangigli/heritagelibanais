@@ -25,10 +25,10 @@ function request(route,{method='GET',body}={}){
     ...(body===undefined?{}:{body:JSON.stringify(body),headers:{'Content-Type':'application/json'}}),
   });
 }
-function call(route,{actor=editor,access=editorAccess,env={},db=blockedDb,fetchImpl=fail,decryptToken=fail,method,body}={}){
+function call(route,{actor=editor,access=editorAccess,env={},db=blockedDb,fetchImpl=fail,decryptToken=fail,encryptToken=fail,method,body}={}){
   const input=request(route,{method,body});
   return handleMailingRequest(new URL(input.url).pathname,input,env,actor,{
-    access,db,fetchImpl,decryptToken,bodyJson:r=>r.json(),
+    access,db,fetchImpl,decryptToken,encryptToken,bodyJson:r=>r.json(),
   });
 }
 function database(){
@@ -119,6 +119,18 @@ test('Brevo status distinguishes credential, sender, quota and provider failures
   }
 });
 
+test('a verified Brevo key is saved once even while the newsletter list needs setup',async()=>{
+  const {db,sql}=database();
+  const fetchImpl=provider({key:'valid-brevo-key',override:path=>path==='/v3/contacts/lists/3'?new Response(null,{status:404}):null});
+  const result=await call('setup',{actor:owner,access:ownerAccess,method:'POST',body:{apiKey:'valid-brevo-key'.padEnd(32,'x')},db,
+    fetchImpl:provider({key:'valid-brevo-key'.padEnd(32,'x'),override:path=>path==='/v3/contacts/lists/3'?new Response(null,{status:404}):null}),encryptToken:async()=> 'encrypted'});
+  assert.equal((await result.json()).ok,true);
+  assert.equal(sql.prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').get('brevo:owner').encrypted_token,'encrypted');
+  const status=await (await call('status',{actor:owner,access:ownerAccess,db,fetchImpl,decryptToken:async()=> 'valid-brevo-key'})).json();
+  assert.equal(status.reason,'list_missing');
+  assert.equal(status.connected,true);
+});
+
 test('publication and preview survive missing Brevo credentials',async()=>{
   const fetchImpl=async url=>{
     assert.equal(new URL(url).hostname,'heritage-libanais.fr');
@@ -137,6 +149,16 @@ test('publication and preview survive missing Brevo credentials',async()=>{
   assert.equal(edited.email.subject,'Un cèdre à découvrir');
   assert.equal(edited.email.previewText,'Notre nouveau récit est en ligne.');
   assert.notEqual(edited.contentHash,preview.contentHash);
+});
+
+test('an event reminder has distinct preview content and a story cannot be reminded',async()=>{
+  const eventDate=new Date(Date.now()+7*86400000).toISOString();
+  const fetchImpl=async()=>Response.json([...published,{id:13,link:'https://heritage-libanais.fr/evenement/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero"><time datetime="${eventDate}">Bientôt</time></article>`}}]);
+  const input={postId:13,intro:'Nous vous attendons pour cette rencontre.',purpose:'reminder'};
+  const preview=await (await call('preview',{fetchImpl,method:'POST',body:input})).json();
+  assert.match(preview.email.subject,/^Rappel/);
+  assert.match(preview.email.html,/Rappel de l’événement/);
+  await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/rappel concerne uniquement/);
 });
 
 test('an editor schedules 400 approved contacts across two days, with shared history and an individual audit',async()=>{

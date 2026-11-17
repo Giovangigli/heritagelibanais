@@ -43,10 +43,11 @@ export function renderEventEmail(input) {
   const title = String(input.title || '').trim();
   if (!title || !input.intro || !input.date || !input.url) throw new TypeError('Title, introduction, date and event URL are required.');
   const url = httpsUrl(input.url, ''); if (!url) throw new TypeError('The event URL must use HTTPS.');
+  const reminder = input.purpose === 'reminder';
   const previewText = String(input.previewText || `${input.date}${input.city ? ` · ${input.city}` : ''}`).trim();
   const details = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0 0">${row('Date', input.date)}${row('Horaire', input.time)}${row('Lieu', input.venue)}${row('Ville', input.city)}${row('Tarif', input.price)}</table>`;
   const body = image(input.imageUrl, input.imageAlt || title, input.imageCredit) + paragraph(input.intro) + details + button(input.registrationUrl ? 'S’inscrire' : 'Voir l’évènement', input.registrationUrl ? httpsUrl(input.registrationUrl, url) : url) + (input.practicalNote ? paragraph(input.practicalNote) : '');
-  return { subject: String(input.subject || `Rencontre · ${title} · ${input.date}`).trim(), previewText, html: shell('Nos rencontres', title, body, previewText) };
+  return { subject: String(input.subject || `${reminder ? 'Rappel' : 'Rencontre'} · ${title} · ${input.date}`).trim(), previewText, html: shell(reminder ? 'Rappel de l’événement' : 'Nos rencontres', title, body, previewText) };
 }
 
 export function renderWelcomeTemplate() {

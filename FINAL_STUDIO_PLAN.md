@@ -15,8 +15,16 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 ## Newsletter
 
 - Implemented in v2: after publication, **Préparer la lettre** selects the new WordPress post in Mailing. The editor can change the subject, inbox preview text, and introduction, preview the resulting newsletter, then explicitly confirm scheduling in Brevo. The send request binds to the reviewed content hash, so changing the text requires a new preview.
+- Event reminders: Mailing can select **Rappel avant l’événement** for a future event, edit the same fields, preview, and explicitly confirm. The server checks that every scheduled batch is before the event. Reminders currently go to confirmed newsletter subscribers; event registrants will be a separate audience once registration exists.
+- Brevo key: save it once in the Studio owner form. It is encrypted in the Studio database and shared with authorized editors. The account check must pass before storage; missing newsletter-list or sender setup is reported separately. The live database had no Brevo connection on 17 November, so the owner still needs to enter a valid key once. Do not put the key in n8n or the repository.
 - Release gate: configure Brevo's production API key in Sites or the owner setup. Authenticate `heritage-libanais.fr` in Brevo and activate the new `contact@heritage-libanais.fr` sender (created on 17 November, currently inactive). The Sites runtime already has `BREVO_SENDER_EMAIL=contact@heritage-libanais.fr` and `BREVO_REPLY_TO=heritage.libanais@gmail.com`. Test preview and a campaign to internal recipients before enabling public sends. As checked on 17 November, the domain is not authenticated.
 - Delivery gate: verify unsubscribe handling before a second batch, daily quota across multiple editions, partial-failure recovery, and actual delivery status. Do not treat “scheduled” as “delivered.”
+
+## Event registration and confirmation: planned
+
+- Add a registration form to each event page with name, email, optional attendee count, explicit privacy notice, capacity/waitlist rules, and duplicate registration handling. Store registrations in a private database with event ID and confirmation status. Keep registration consent separate from newsletter consent.
+- After a successful registration, send a transactional confirmation email through Brevo with the event title, date/time and time zone, venue/address, registration reference, practical information, and a link to the event. Send once per registration ID; record Brevo message ID and delivery state. Show an on-page confirmation even if email delivery is delayed, and make retry safe.
+- Add an owner view to export attendees and resend a confirmation, plus a cancellation path. For event edits or cancellation, prepare a separate reviewed message to affected registrants. Test registration, duplicate submission, capacity, email delivery, and cancellation before Joseph's demo.
 
 ## Social publishing: deferred
 
