@@ -4,7 +4,7 @@ import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
 import {validate} from '../public/private-studio/studio-model.mjs';
-import {publishWordPressPost,trashWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
+import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
 const WEBHOOK='https://giovangigli.app.n8n.cloud/webhook/heritage-studio-draft';
 const MAX_BODY=12*1024*1024;
 const encoder=new TextEncoder();
@@ -122,6 +122,24 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       const rows=await database(env).prepare('SELECT post_id,title,type,url,status,created_at FROM studio_wordpress_publications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(access.workspaceUserId).all();
       return json({posts:rows.results||[]});
     }
+    if(path==='/api/publication/test'&&request.method==='POST'){
+      if(access.role!=='owner')throw error('Le test de publication est réservé au propriétaire du Studio.',403);
+      const {type}=await bodyJson(request);
+      if(!['recit','evenement'].includes(type))throw error('Type de test invalide.',400);
+      const date=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
+      const event={startDate:date,startTime:'18 h 00',venue:'Lieu de démonstration',city:'Paris'};
+      const title=type==='recit'?'TEST STUDIO — Récit de vérification':'TEST STUDIO — Événement de vérification';
+      const active=await database(env).prepare('SELECT post_id FROM studio_wordpress_publications WHERE user_id = ? AND title = ? AND status = ? LIMIT 1').bind(access.workspaceUserId,title,'publish').first();
+      if(active)throw error('Un test de ce type est déjà en ligne. Placez-le d’abord dans la corbeille.',409);
+      const proposal={basis:{sourceText:'Publication temporaire de vérification du Studio. Ce contenu ne fait pas partie de la programmation éditoriale.',contentType:type,...(type==='evenement'?{event}:{})},output:{title,summary:'Publication temporaire de vérification.',contentType:type,...(type==='evenement'?{event}:{})}};
+      const slug='studio-'+Array.from(crypto.getRandomValues(new Uint8Array(12))).map(x=>x.toString(16).padStart(2,'0')).join('');
+      const credential=await wordpressConnection(env,access);
+      const post=await publishWordPressPost(credential,proposal,slug,fetchImpl);
+      try{
+        await database(env).prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(slug,access.workspaceUserId,post.id,title,type,post.url,'publish',new Date().toISOString()).run();
+      }catch(e){await trashWordPressPost(credential,post.id,fetchImpl);throw e;}
+      return json({post});
+    }
     if(path==='/api/publication/publish'&&request.method==='POST'){
       const {reviewer,revision}=await bodyJson(request);
       if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision))throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
@@ -177,6 +195,26 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
         }
       }
       return json({state:null,revision:null});
+    }
+    if(path==='/api/publication/restore'&&request.method==='POST'){
+      const {postId,revision}=await bodyJson(request);
+      if(!Number.isSafeInteger(postId)||postId<1)throw error('Référence de publication invalide.',400);
+      const db=database(env);
+      const tracked=await db.prepare('SELECT post_id,status FROM studio_wordpress_publications WHERE post_id = ? AND user_id = ?').bind(postId,access.workspaceUserId).first();
+      if(!tracked||tracked.status!=='trash')throw error('Cette publication n’est pas dans la corbeille du Studio.',403);
+      const post=await restoreWordPressPost(await wordpressConnection(env,access),postId,fetchImpl);
+      await db.prepare('UPDATE studio_wordpress_publications SET status = ?, url = ? WHERE post_id = ? AND user_id = ?').bind('publish',post.url,postId,access.workspaceUserId).run();
+      const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
+      if(row&&row.revision===revision){
+        const state=JSON.parse(row.state_json);
+        if(state.draft?.wordpressPostId===postId){
+          state.draft.wordpressStatus='publish';state.draft.wordpressUrl=post.url;state.status='Publié';
+          state.history.push({status:'Publié',at:new Date().toISOString(),note:`Publication WordPress n°${postId} restaurée`});
+          const saved=await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(state),new Date().toISOString(),access.workspaceUserId,revision).run();
+          if(saved.meta.changes)return json({post,state,revision:revision+1});
+        }
+      }
+      return json({post,state:null,revision:null});
     }
     if(path.startsWith('/api/mailing/')){
       const result=await handleMailingRequest(path,request,env,user,{db:database(env),bodyJson,encryptToken,decryptToken,fetchImpl,access});

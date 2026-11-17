@@ -205,6 +205,27 @@ test('owner stores a site application password encrypted and status never expose
   assert.equal(status.connected,true);
   assert(!JSON.stringify(status).includes(password));
 });
+test('owner can publish a disposable WordPress check without changing the saved dossier',async()=>{
+  const {env,sql}=setup();configureWorkspace(env);env.WORDPRESS_ACCESS_TOKEN='server-secret';
+  const original=emptyState();
+  sql.prepare('INSERT INTO studio_sessions VALUES (?,?,?,?)').run(user.userId,JSON.stringify(original),7,'now');
+  const fetchImpl=async(_url,init)=>{
+    if(init.method==='GET')return Response.json([]);
+    if(init.method==='POST')return Response.json({id:321,status:'publish',link:'https://heritage-libanais.fr/test-studio/'});
+    if(init.method==='DELETE')return Response.json({id:321,status:'trash'});
+  };
+  assert.equal((await handleStudioRequest(request('/api/publication/test','POST',{type:'recit'}),env,editor,{fetchImpl})).status,403);
+  const published=await handleStudioRequest(request('/api/publication/test','POST',{type:'recit'}),env,user,{fetchImpl});
+  assert.equal(published.status,200);
+  assert.equal((await published.json()).post.id,321);
+  assert.equal(sql.prepare('SELECT revision FROM studio_sessions').get().revision,7);
+  assert.deepEqual(JSON.parse(sql.prepare('SELECT state_json FROM studio_sessions').get().state_json),original);
+  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'publish');
+  assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{postId:321,revision:0}),env,user,{fetchImpl})).status,200);
+  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'trash');
+  assert.equal((await handleStudioRequest(request('/api/publication/restore','POST',{postId:321,revision:0}),env,user,{fetchImpl})).status,200);
+  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'publish');
+});
 test('an older Studio publication remains removable after a new dossier replaces the current session',async()=>{
   const {env,sql}=setup();env.WORDPRESS_ACCESS_TOKEN='server-secret';
   sql.prepare('INSERT INTO studio_wordpress_publications VALUES (?,?,?,?,?,?,?,?)').run('studio-0123456789abcdef01234567',user.userId,222,'Ancien récit','recit','https://heritage-libanais.fr/ancien/','publish','now');

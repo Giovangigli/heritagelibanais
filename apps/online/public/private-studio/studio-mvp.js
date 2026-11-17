@@ -114,6 +114,16 @@ async function refreshPublicationList(){
       if(post.status==='publish'){
         const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Retirer du site';
         button.addEventListener('click',()=>trashPublication(post.post_id));item.append(button);
+      }else if(post.status==='trash'){
+        const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Restaurer sur le site';
+        button.addEventListener('click',async()=>{
+          try{
+            const response=await fetch('/api/publication/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({postId:post.post_id,revision:cloudRevision})});
+            const result=await response.json();if(!response.ok)throw new Error(result.error||'La restauration a échoué.');
+            if(result.state){state=result.state;cloudRevision=result.revision;localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));render();}
+            await refreshPublicationList();feedback('Publication restaurée sur WordPress.');
+          }catch(error){feedback(error.message,true);}
+        });item.append(button);
       }
       list.append(item);
     }

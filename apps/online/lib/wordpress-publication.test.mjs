@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eventDateTime,wordpressPostFromProposal,publishWordPressPost,trashWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
+import {eventDateTime,wordpressPostFromProposal,publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
 
 const slug='studio-0123456789abcdef01234567';
 const story={basis:{sourceText:'Un texte <à relire>.\n\nSecond paragraphe.',sources:'Archive & livre',contentType:'recit'},output:{title:'Un récit',summary:'Résumé du récit.',contentType:'recit'}};
@@ -67,5 +67,7 @@ test('site application password verifies the user and posts, then publishes and 
   assert.equal(await verifyWordPressToken(connection,fetchImpl),true);
   assert.equal((await publishWordPressPost(connection,story,slug,fetchImpl)).id,44);
   assert.equal((await trashWordPressPost(connection,44,fetchImpl)).status,'trash');
-  assert.equal(calls.length,5);
+  assert.equal((await restoreWordPressPost(connection,44,fetchImpl)).status,'publish');
+  assert.equal(JSON.parse(calls.at(-1).options.body).status,'publish');
+  assert.equal(calls.length,6);
 });

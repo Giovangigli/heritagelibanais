@@ -15,7 +15,7 @@ export default async function Setup(){
     <h1>Connexions du Studio</h1>
     <h2>WordPress</h2>
     {access?.canManageConnections
-      ? <WordPressConnectionForm/>
+      ? <WordPressConnectionForm canTest={access.role==='owner'}/>
       : <p>La connexion WordPress est gérée par l’administration du Studio.</p>}
     <h2>Modèle de rédaction</h2>
     {!access?.canManageConnections

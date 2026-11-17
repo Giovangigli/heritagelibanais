@@ -134,3 +134,11 @@ export async function trashWordPressPost(connection, postId, fetchImpl = fetch) 
   if (post?.status !== 'trash') throw failure('WordPress n’a pas confirmé la mise à la corbeille.');
   return {id:postId,status:'trash'};
 }
+
+export async function restoreWordPressPost(connection, postId, fetchImpl = fetch) {
+  if (!Number.isSafeInteger(postId) || postId < 1) throw failure('Référence WordPress invalide.', 400);
+  const {api}=wordpressAccess(connection);
+  const post=await requestWordPress(connection,`${api}/posts/${postId}`,{method:'POST',body:JSON.stringify({status:'publish'})},fetchImpl);
+  if(post?.status!=='publish'||!post?.link?.startsWith(`https://${SITE}/`))throw failure('WordPress n’a pas confirmé la restauration.');
+  return {id:postId,status:'publish',url:post.link};
+}
