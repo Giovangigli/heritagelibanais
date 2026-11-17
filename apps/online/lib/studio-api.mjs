@@ -43,7 +43,13 @@ async function connection(env,access){
 async function wordpressConnection(env,access){
   if(env.WORDPRESS_ACCESS_TOKEN)return env.WORDPRESS_ACCESS_TOKEN;
   const row=await database(env).prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').bind('wordpress:'+access.workspaceUserId).first();
-  return row?decryptToken(row.encrypted_token,env):null;
+  if(!row)return null;
+  const saved=await decryptToken(row.encrypted_token,env);
+  if(saved.startsWith('{')){
+    const value=JSON.parse(saved);
+    if(value?.type==='application-password')return value;
+  }
+  return saved;
 }
 async function upstream(payload,token,fetchImpl,timeout=25000){
   const response=await fetchImpl(WEBHOOK,{method:'POST',headers:{'Content-Type':'application/json','X-Heritage-Studio-Token':token},body:JSON.stringify(payload),signal:AbortSignal.timeout(timeout)});
@@ -98,10 +104,17 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
     if(path==='/api/publication/setup'&&request.method==='POST'){
       if(!access.canManageConnections)throw error('La connexion WordPress est réservée à l’administration du Studio.',403);
       if(env.WORDPRESS_ACCESS_TOKEN)throw error('La connexion WordPress est gérée dans les réglages de l’hébergement.',409);
-      const {token}=await bodyJson(request);
-      if(typeof token!=='string'||token.trim().length<20||token.length>500||/[\r\n]/.test(token))throw error('Saisissez un jeton WordPress complet.',400);
-      await verifyWordPressToken(token.trim(),fetchImpl);
-      const encrypted=await encryptToken(token.trim(),env);
+      const {token,username,password}=await bodyJson(request);
+      let credential;
+      if(typeof username==='string'||typeof password==='string'){
+        if(typeof username!=='string'||!/^[A-Za-z0-9_.@+\-]{1,200}$/.test(username.trim())||typeof password!=='string'||password.length<16||password.length>200||/[\r\n]/.test(password))throw error('Saisissez l’identifiant WordPress et le mot de passe d’application complet.',400);
+        credential={type:'application-password',username:username.trim(),password};
+      }else{
+        if(typeof token!=='string'||token.trim().length<20||token.length>500||/[\r\n]/.test(token))throw error('Saisissez un jeton WordPress complet.',400);
+        credential=token.trim();
+      }
+      await verifyWordPressToken(credential,fetchImpl);
+      const encrypted=await encryptToken(typeof credential==='string'?credential:JSON.stringify(credential),env);
       await database(env).prepare('INSERT INTO studio_connections (user_id,encrypted_token,updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET encrypted_token=excluded.encrypted_token,updated_at=excluded.updated_at').bind('wordpress:'+access.workspaceUserId,encrypted,new Date().toISOString()).run();
       return json({ok:true});
     }

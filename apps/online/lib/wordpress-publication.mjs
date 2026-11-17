@@ -1,5 +1,13 @@
 const SITE = 'heritage-libanais.fr';
-const API = `https://public-api.wordpress.com/wp/v2/sites/${SITE}/posts`;
+const OAUTH_API = `https://public-api.wordpress.com/wp/v2/sites/${SITE}`;
+const APP_API = `https://${SITE}/wp-json/wp/v2`;
+function wordpressAccess(connection) {
+  if (typeof connection === 'string' && connection) return {api:OAUTH_API,authorization:`Bearer ${connection}`};
+  if (connection?.type === 'application-password' && /^[A-Za-z0-9_.@+\-]{1,200}$/.test(connection.username) && typeof connection.password === 'string' && connection.password.length >= 16) {
+    return {api:APP_API,authorization:`Basic ${btoa(`${connection.username}:${connection.password}`)}`};
+  }
+  throw failure('La connexion WordPress doit être configurée par l’administrateur.',503);
+}
 
 const failure = (message, status = 502) => Object.assign(new Error(message), { status });
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -63,11 +71,11 @@ export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
   };
 }
 
-async function requestWordPress(token, url, options, fetchImpl) {
-  if (!token) throw failure('La connexion WordPress doit être configurée par l’administrateur.', 503);
+async function requestWordPress(connection, url, options, fetchImpl) {
+  const {authorization}=wordpressAccess(connection);
   const response = await fetchImpl(url, {
     ...options,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(options?.body ? {'Content-Type':'application/json'} : {}) },
+    headers: { Authorization: authorization, Accept: 'application/json', ...(options?.body ? {'Content-Type':'application/json'} : {}) },
     signal: AbortSignal.timeout(15000),
   });
   const payload = await response.json().catch(() => null);
@@ -75,46 +83,54 @@ async function requestWordPress(token, url, options, fetchImpl) {
   return payload;
 }
 
-export async function verifyWordPressToken(token,fetchImpl=fetch){
-  const url=new URL(API);
+export async function verifyWordPressToken(connection,fetchImpl=fetch){
+  const {api}=wordpressAccess(connection);
+  if (typeof connection !== 'string') {
+    const user=await requestWordPress(connection,`${api}/users/me?context=edit`,{method:'GET'},fetchImpl);
+    if(!Number.isSafeInteger(user?.id))throw failure('Le compte WordPress ne répond pas comme prévu.');
+  }
+  const url=new URL(`${api}/posts`);
   url.searchParams.set('per_page','1');url.searchParams.set('context','edit');
-  const posts=await requestWordPress(token,url.href,{method:'GET'},fetchImpl);
+  const posts=await requestWordPress(connection,url.href,{method:'GET'},fetchImpl);
   if(!Array.isArray(posts))throw failure('La connexion WordPress ne répond pas comme prévu.');
   return true;
 }
 
-async function uploadMedia(token, image, fetchImpl) {
-  const url=`https://public-api.wordpress.com/wp/v2/sites/${SITE}/media`;
+async function uploadMedia(connection, image, fetchImpl) {
+  const {api,authorization}=wordpressAccess(connection);
+  const url=`${api}/media`;
   const form=new FormData();
   form.append('file',new Blob([image.bytes],{type:image.contentType}),image.name);
   form.append('alt_text',image.alt);
   form.append('caption',image.credit);
-  const response=await fetchImpl(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},body:form,signal:AbortSignal.timeout(30000)});
+  const response=await fetchImpl(url,{method:'POST',headers:{Authorization:authorization,Accept:'application/json'},body:form,signal:AbortSignal.timeout(30000)});
   const payload=await response.json().catch(()=>null);
   if(!response.ok||!Number.isSafeInteger(payload?.id)||!payload?.source_url?.startsWith('https://'))throw failure('WordPress n’a pas accepté une image. La publication a été arrêtée.');
   return {id:payload.id,url:payload.source_url,alt:image.alt,credit:image.credit};
 }
 
-export async function publishWordPressPost(token, proposal, slug, fetchImpl = fetch, media = []) {
-  const search = new URL(API);
+export async function publishWordPressPost(connection, proposal, slug, fetchImpl = fetch, media = []) {
+  const {api}=wordpressAccess(connection);
+  const search = new URL(`${api}/posts`);
   search.searchParams.set('slug', slug);
   search.searchParams.set('context', 'edit');
-  const existing = await requestWordPress(token, search.href, {method:'GET'}, fetchImpl);
+  const existing = await requestWordPress(connection, search.href, {method:'GET'}, fetchImpl);
   if (Array.isArray(existing) && existing.length) {
     const post = existing[0];
     if (post.status !== 'publish') throw failure('Une publication WordPress existe déjà avec cette référence, mais son état doit être vérifié.', 409);
     return {id:post.id,url:post.link,status:post.status};
   }
   const uploaded=[];
-  for(const image of media) uploaded.push(await uploadMedia(token,image,fetchImpl));
-  const post = await requestWordPress(token, API, {method:'POST',body:JSON.stringify(wordpressPostFromProposal(proposal, slug, uploaded))}, fetchImpl);
+  for(const image of media) uploaded.push(await uploadMedia(connection,image,fetchImpl));
+  const post = await requestWordPress(connection, `${api}/posts`, {method:'POST',body:JSON.stringify(wordpressPostFromProposal(proposal, slug, uploaded))}, fetchImpl);
   if (!Number.isSafeInteger(post?.id) || post.status !== 'publish' || !post.link?.startsWith(`https://${SITE}/`)) throw failure('WordPress a répondu sans publication vérifiable. Vérifiez le site avant de recommencer.');
   return {id:post.id,url:post.link,status:post.status};
 }
 
-export async function trashWordPressPost(token, postId, fetchImpl = fetch) {
+export async function trashWordPressPost(connection, postId, fetchImpl = fetch) {
   if (!Number.isSafeInteger(postId) || postId < 1) throw failure('Référence WordPress invalide.', 400);
-  const post = await requestWordPress(token, `${API}/${postId}?force=false`, {method:'DELETE'}, fetchImpl);
+  const {api}=wordpressAccess(connection);
+  const post = await requestWordPress(connection, `${api}/posts/${postId}?force=false`, {method:'DELETE'}, fetchImpl);
   if (post?.status !== 'trash') throw failure('WordPress n’a pas confirmé la mise à la corbeille.');
   return {id:postId,status:'trash'};
 }

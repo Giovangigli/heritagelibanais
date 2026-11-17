@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {eventDateTime,wordpressPostFromProposal,publishWordPressPost,trashWordPressPost} from './wordpress-publication.mjs';
+import {eventDateTime,wordpressPostFromProposal,publishWordPressPost,trashWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
 
 const slug='studio-0123456789abcdef01234567';
 const story={basis:{sourceText:'Un texte <à relire>.\n\nSecond paragraphe.',sources:'Archive & livre',contentType:'recit'},output:{title:'Un récit',summary:'Résumé du récit.',contentType:'recit'}};
@@ -51,4 +51,21 @@ test('approved image is uploaded before the article and becomes its featured ima
   assert.equal(post.featured_media,72);
   assert.match(post.content,/Photo autorisée/);
   assert.match(post.content,/cedre.jpg/);
+});
+test('site application password verifies the user and posts, then publishes and trashes through the site API',async()=>{
+  const connection={type:'application-password',username:'studio.owner',password:'abcd efgh ijkl mnop qrst uvwx'};
+  const calls=[];
+  const fetchImpl=async(url,options)=>{
+    calls.push({url,options});
+    assert.equal(options.headers.Authorization,`Basic ${btoa(`${connection.username}:${connection.password}`)}`);
+    assert.match(url,/^https:\/\/heritage-libanais\.fr\/wp-json\/wp\/v2\//);
+    if(url.includes('/users/me'))return Response.json({id:3});
+    if(options.method==='GET')return Response.json([]);
+    if(options.method==='POST')return Response.json({id:44,status:'publish',link:'https://heritage-libanais.fr/test-studio/'});
+    return Response.json({id:44,status:'trash'});
+  };
+  assert.equal(await verifyWordPressToken(connection,fetchImpl),true);
+  assert.equal((await publishWordPressPost(connection,story,slug,fetchImpl)).id,44);
+  assert.equal((await trashWordPressPost(connection,44,fetchImpl)).status,'trash');
+  assert.equal(calls.length,5);
 });

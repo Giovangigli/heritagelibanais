@@ -189,6 +189,22 @@ test('owner configures WordPress once and an editor can use the shared encrypted
   assert.equal(status.connected,true);
   assert(!JSON.stringify(status).includes(secret));
 });
+test('owner stores a site application password encrypted and status never exposes it',async()=>{
+  const {env,sql}=setup();configureWorkspace(env);
+  const password='abcd efgh ijkl mnop qrst uvwx';
+  const fetchImpl=async(url,options)=>{
+    assert.match(url,/^https:\/\/heritage-libanais\.fr\/wp-json\/wp\/v2\//);
+    assert.equal(options.headers.Authorization,`Basic ${btoa(`studio.owner:${password}`)}`);
+    return url.includes('/users/me')?Response.json({id:3}):Response.json([]);
+  };
+  const connected=await handleStudioRequest(request('/api/publication/setup','POST',{username:'studio.owner',password}),env,user,{fetchImpl});
+  assert.equal(connected.status,200);
+  const stored=sql.prepare('SELECT encrypted_token FROM studio_connections WHERE user_id = ?').get('wordpress:owner').encrypted_token;
+  assert(!stored.includes(password));
+  const status=await(await handleStudioRequest(request('/api/publication/status'),env,editor,{fetchImpl})).json();
+  assert.equal(status.connected,true);
+  assert(!JSON.stringify(status).includes(password));
+});
 test('an older Studio publication remains removable after a new dossier replaces the current session',async()=>{
   const {env,sql}=setup();env.WORDPRESS_ACCESS_TOKEN='server-secret';
   sql.prepare('INSERT INTO studio_wordpress_publications VALUES (?,?,?,?,?,?,?,?)').run('studio-0123456789abcdef01234567',user.userId,222,'Ancien récit','recit','https://heritage-libanais.fr/ancien/','publish','now');

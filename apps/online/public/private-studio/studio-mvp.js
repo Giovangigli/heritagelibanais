@@ -1179,11 +1179,13 @@ $('validate').addEventListener('click', async () => {
 $('wordpress-connect').addEventListener('click',async()=>{
   if(!studioAccess.canManageConnections)return;
   const button=$('wordpress-connect');button.disabled=true;
-  $('wordpress-connection-status').textContent='Vérification du jeton WordPress…';
+  $('wordpress-connection-status').textContent='Vérification de la connexion WordPress…';
   try{
-    const response=await fetch('/api/publication/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('wordpress-token').value}),signal:AbortSignal.timeout(20000)});
+    const token=$('wordpress-token').value.trim();
+    const connection=token?{token}:{username:$('wordpress-username').value.trim(),password:$('wordpress-password').value};
+    const response=await fetch('/api/publication/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(connection),signal:AbortSignal.timeout(20000)});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'Connexion refusée.');
-    $('wordpress-token').value='';await refreshWordPressConnection();
+    $('wordpress-token').value='';$('wordpress-password').value='';await refreshWordPressConnection();
   }catch(error){$('wordpress-connection-status').textContent=error.message;}finally{button.disabled=false;}
 });
 async function trashPublication(postId){
