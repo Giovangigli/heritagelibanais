@@ -2,13 +2,13 @@
 
 Updated 17 November 2026. This is the release checklist for `apps/online`. The social export button and current social editing UI remain available.
 
-The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 20). Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
+The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 21). Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
 
 ## Website publication
 
 - Implemented in v2: after review, **Valider et publier sur le site** creates a published WordPress Récit or Événement. The server uses the saved proposal, a server-only WordPress token, a deterministic slug, and a D1 publication record so a retry can find the existing post. Uploaded PNG, JPEG, and WebP images are sent from private R2 to WordPress with their credits; the first becomes the featured image. The Studio stores the WordPress post ID and URL.
 - Implemented in v2: **Retirer du site** moves only the tracked post to WordPress Trash. It does not permanently delete it. The Studio keeps its dossier and audit history.
-- Release gate: the owner creates a site-specific WordPress application password under Users → Profile and enters it once in the private Studio connection form. An existing OAuth token or `WORDPRESS_ACCESS_TOKEN` Sites secret also remains supported. Then run one disposable test publication plus Trash and restore verification on WordPress. Migration `0002_empty_victor_mancha.sql` is applied in the live Studio database. Never paste credentials into source or chat.
+- Release gate: the owner creates a site-specific WordPress application password under Users → Profile and enters it once on the private Studio `/setup` page. An existing OAuth token or `WORDPRESS_ACCESS_TOKEN` Sites secret also remains supported. Then run disposable Récit and Événement publication tests plus Trash and restore verification on WordPress. Migration `0002_empty_victor_mancha.sql` is applied in the live Studio database. Never paste credentials into source or chat.
 - Site theme: `wordpress-theme/heritage-libanais/` adds newly published Studio posts to the homepage and Récits/Événements listings alongside the existing curated cards. Version 1.0.23 was installed as the active WordPress theme on 17 November; the home, Récits, and Événements pages loaded after installation. Verify an actual Studio post appears in these lists during the publication test.
 - Editorial gate: verify article formatting, images, credits, event dates, and mobile layout with Joseph before relying on automatic publishing for real content.
 
