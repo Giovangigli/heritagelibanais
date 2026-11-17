@@ -539,12 +539,11 @@ function updateProposalGaps(entry) {
   const note = $('validation-gaps');
   note.textContent = versionGaps.length
     ? 'Informations manquantes dans cette proposition (' + versionGaps.join(', ') + '). Complétez-la avant de continuer.'
-    : missingPhotos ? 'Rattachez les photos de cette version avant la validation finale ou l’export.'
+    : missingPhotos ? 'Rattachez les photos de cette version avant de publier.'
     : '';
   note.hidden = !note.textContent;
   const blocked = Boolean(pendingRevision()) || versionGaps.length > 0 || missingPhotos;
   $('validate').disabled = Boolean(session.active) || blocked;
-  $('social-export').disabled = blocked;
 }
 function readOutput() {
   return pendingRevision()?.output ?? canonicalOutput();
@@ -1243,17 +1242,6 @@ $('email-preview-button').addEventListener('click', async () => {
   finally { button.disabled = false; }
 });
 $('archive').addEventListener('click', () => act(() => archive(state), 'Dossier archivé localement.'));
-$('social-export').addEventListener('click', () => {
-  const entry = currentProposal();
-  const slides = proposalSlides(entry);
-  const lines = ['HÉRITAGE LIBANAIS — PROPOSITION À RELIRE', 'Version V' + entry.number, 'Type : ' + ((entry.output.contentType || contentType(entry.basis)) === 'evenement' ? 'Évènement' : 'Récit'), 'Statut : proposition locale, aucune publication', '', 'Cartes', entry.output.cards, '', 'Direction visuelle', ...slides.map((slide, index) => 'Carte ' + (index + 1) + ' — ' + (slide.direction || '') + '\nGabarit : ' + (templateLabel(slide.gabarit) || slide.layout) + ', fond ' + slide.background + '\nVisuels : ' + (slide.mediaItems.map((item) => item.name).join(', ') || 'sans photo')), '', 'Légende', entry.output.caption, '', 'Informations pratiques', ...eventDetails(entry.output.event || entry.basis.event).map(([label, value]) => label + ' : ' + value), '', 'Points à relire', ...(entry.output.checks || []), ...(entry.output.event?.missingFields || []).map((field) => 'À compléter : ' + field), ...(entry.basis.sources?.trim() ? ['', 'Sources', entry.basis.sources] : []), ...(entry.basis.facts?.trim() ? ['', 'Faits validés', entry.basis.facts] : []), '', 'Visuels déposés / crédits / droits', ...(entry.basis.media || []).map((item) => item.name + ' — ' + (item.credit || 'crédit non renseigné') + ' — droits ' + (item.rights || 'non renseignés') + ' — référence : ' + (item.rightsEvidence || 'non renseignée')), '', 'Demande de révision', entry.request || 'Aucune'];
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a'); link.href = url; link.download = 'studio-export-a-relire-v' + entry.number + '.txt';
-  document.body.append(link); link.click(); link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  feedback('Dossier de proposition téléchargé avec le texte, la composition et les références des visuels. Les images restent dans cette session locale.');
-});
 let mailingLoaded=false;
 let mailingPosts=[];
 let mailingPreview=null;

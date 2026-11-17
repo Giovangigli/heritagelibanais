@@ -1,6 +1,6 @@
 # Final Studio plan
 
-Updated 17 November 2026. This is the release checklist for `apps/online`. The social export button and current social editing UI remain available.
+Updated 17 November 2026. This is the release checklist for `apps/online`. The social editing UI remains available.
 
 The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 21). Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
 
@@ -30,7 +30,7 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 
 ## Social publishing: deferred
 
-- Keep the existing carousel preview, editing controls, and **Télécharger le dossier de proposition** button.
+- Keep the existing carousel preview and editing controls.
 - Still needed: render the approved carousel as downloadable portrait image files; verify text overflow and image crops on a phone; create a distinct Reel storyboard and rendered MP4/cover; package exact captions and media; validate image rights per destination.
 - Direct Instagram publication is out of the current release. It requires Meta account permissions, a separate approval step, processing status, and duplicate-safe retries. Manual upload can be the first supported path once the finished assets exist.
 
