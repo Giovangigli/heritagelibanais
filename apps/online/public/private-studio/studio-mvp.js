@@ -239,7 +239,7 @@ async function restoreSavedMedia() {
   const sources = new Map([...media,...state.proposals.flatMap(entry=>entry.basis.media||[])].map(item=>[item.id,item]));
   await Promise.all([...sources.values()].map(async item=>{
     try {
-      const response=await fetch('/api/media/'+encodeURIComponent(item.id),{cache:'no-store'});if(!response.ok)return;
+      const response=await fetch('/api/media/'+encodeURIComponent(item.id),{cache:'no-store',signal:AbortSignal.timeout(12000)});if(!response.ok)return;
       const blob=await response.blob();const file=new File([blob],item.name,{type:blob.type});const preview=await imagePreviewData(file);
       if(!session.isEpochCurrent(epoch)||mediaFiles.has(item.id))return;
       mediaFiles.set(item.id,file);mediaPreviews.set(item.id,preview);mediaUrls.set(item.id,URL.createObjectURL(file));
@@ -1407,15 +1407,26 @@ $('mailing-send').addEventListener('click',async()=>{
   finally { mailingSending = false; mailingPreview = null; $('mailing-confirm').checked = false; }
 });
 $('correction-request').value=state.correctionRequest||'';
-renderStoryTemplates();
-setForm(); updateGaps(); render(); syncGenerationControls();
+setForm();
+$('main').inert=false;
+$('studio-loading').hidden=true;
+updateGaps();
+try {
+  renderStoryTemplates();
+  render();
+  syncGenerationControls();
+} catch (error) {
+  console.error('Studio preview initialization failed', error);
+  feedback('L’aperçu enregistré n’a pas pu s’afficher. Vous pouvez modifier la saisie et générer un aperçu.', true, 'compose-feedback');
+}
 refreshBridgeStatus();
 refreshWordPressConnection();
 refreshPublicationList();
 window.addEventListener('focus',()=>refreshBridgeStatus());
 new ResizeObserver(fitSlidePreview).observe($('slide-stage'));
 document.fonts.ready.then(fitSlidePreview);
-await restoreSavedMedia();
-$('main').inert=false;
-$('studio-loading').hidden=true;
+void restoreSavedMedia().catch(error => {
+  console.error('Studio media restoration failed', error);
+  feedback('Certaines images n’ont pas pu être restaurées. Vous pouvez les rattacher dans la saisie.', true, 'compose-feedback');
+});
 if(localStorage.getItem(storageKey+'-pending')==='true'&&!cloudConflict){cloudPending=true;saveCloudSession();}
