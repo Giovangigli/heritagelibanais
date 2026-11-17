@@ -141,7 +141,8 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       return json({post});
     }
     if(path==='/api/publication/publish'&&request.method==='POST'){
-      const {reviewer,revision,preview}=await bodyJson(request);
+      const {reviewer:requestedReviewer,revision,preview}=await bodyJson(request);
+      const reviewer=preview===undefined?requestedReviewer:(user.fullName || user.displayName || user.email || "Équipe Studio").trim().slice(0,120);
       if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision))throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
       const db=database(env);
       const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();

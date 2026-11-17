@@ -1,4 +1,4 @@
-import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, markReady, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
+import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -36,7 +36,7 @@ $('mailing-confirmation').hidden = !studioAccess.canScheduleMailing;
 $('mailing-send').hidden = !studioAccess.canScheduleMailing;
 const newMediaId = () => globalThis.crypto?.randomUUID?.() || 'media-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 const form = $('dossier-form');
-const dossierFields = ['title', 'sourceText', 'sources', 'theme', 'brief'];
+const dossierFields = ['title', 'sourceText', 'sources', 'theme'];
 const templateLabels = {
   couverture: 'Couverture · titre',
   colonnes: 'Texte + image large',
@@ -136,7 +136,7 @@ function syncGenerationControls() {
   form.querySelector('button[type="submit"]').disabled = running;
   $('save-revision').disabled = running;
   $('accept-revision').disabled = running;
-  for (const id of ['validate', 'archive']) $(id).disabled = running;
+  for (const id of ['archive']) $(id).disabled = running;
   if (state.proposals.length) updateProposalGaps({ ...currentProposal(), output: readOutput() });
   $('cancel-generation').hidden = !running;
   $('generation-help').hidden = !running;
@@ -173,14 +173,14 @@ function resetDossier() {
     mediaFiles: new Map(mediaFiles), mediaPreviews: new Map(mediaPreviews),
     mediaUrls: new Map(mediaUrls), rightsUrls: new Map(rightsUrls),
     openMediaDetails: new Set(openMediaDetails), selectedVersion, slideIndex,
-    reviewer: $('reviewer').value, confirmed: $('final-confirmation').checked,
+    confirmed: $('final-confirmation').checked,
     correction: $('correction-request').value,
   };
   session.invalidate();
   state = emptyState(); media = []; selectedVersion = 0; slideIndex = 0;
   mediaFiles.clear(); mediaPreviews.clear(); mediaUrls.clear(); rightsUrls.clear(); openMediaDetails.clear();
   form.reset();
-  $('reviewer').value = ''; $('final-confirmation').checked = false;
+  $('final-confirmation').checked = false;
   $('correction-request').value = '';
   feedback('', false, 'compose-feedback');
   $('slide-frame').replaceChildren();
@@ -201,7 +201,7 @@ function undoReset() {
   resetSnapshot = null;
   setForm(); updateGaps(); render(); syncGenerationControls();
   slideIndex = previous.slideIndex; if (state.proposals.length) renderSlide();
-  $('reviewer').value = previous.reviewer; $('final-confirmation').checked = previous.confirmed;
+  $('final-confirmation').checked = previous.confirmed;
   $('correction-request').value = previous.correction;
   $('reset-notice').hidden = true;
   feedback('Dossier précédent restauré avec ses images et ses versions.');
@@ -331,7 +331,7 @@ function updateContentType() {
   for (const field of $('event-fields').querySelectorAll('input, textarea')) field.disabled = !isEvent;
   $('story-templates').hidden = isEvent;
   if (isEvent) $('story-template-info').hidePopover?.();
-  for (const id of ['general-title-field', 'general-theme-field']) $(id).hidden = isEvent;
+  for (const id of ['general-title-field']) $(id).hidden = isEvent;
   $('dossier-title').textContent = isEvent ? 'Nouvel évènement' : 'Nouveau récit';
   $('dossier-intro').textContent = isEvent ? 'Ajoutez une affiche, un programme ou les informations pratiques.' : 'Collez le texte relu de votre récit. Ajoutez des images si vous en avez.';
   $('source-text-label').textContent = isEvent ? 'Texte ou programme de l’évènement' : 'Texte du récit';
@@ -543,7 +543,7 @@ function updateProposalGaps(entry) {
     : '';
   note.hidden = !note.textContent;
   const blocked = Boolean(pendingRevision()) || versionGaps.length > 0 || missingPhotos;
-  $('mark-ready').disabled = Boolean(session.active) || blocked;
+  $('validate').disabled = Boolean(session.active) || blocked;
   $('social-export').disabled = blocked;
 }
 function readOutput() {
@@ -577,8 +577,7 @@ function renderRevisionControls(entry) {
   $('revision-notice').hidden = !pending;
   $('version-select').disabled = pending;
   const isLatest = Boolean(entry && entry.number === state.proposals.at(-1)?.number);
-  $('mark-ready').hidden = pending || !isLatest || state.status !== 'Proposition';
-  $('validation-panel').hidden = pending || !isLatest || state.status !== 'Prêt à valider';
+  $('validation-panel').hidden = pending || !isLatest || !['Proposition', 'Prêt à valider'].includes(state.status);
   $('draft-panel').hidden = pending || !state.draft;
   $('archive').hidden = pending || !state.draft;
   return pending;
@@ -782,8 +781,8 @@ function fitSlidePreview() {
 const practicalLabels={titre_affiche:'Titre de l’affiche',date_debut:'Date de début',date_fin:'Date de fin',heure_debut:'Heure de début',heure_fin:'Heure de fin',fuseau:'Fuseau horaire',lieu:'Lieu',adresse:'Adresse',ville:'Ville',intervenants:'Intervenants',inscription:'Modalités d’inscription',lien_inscription:'Lien d’inscription',tarif:'Tarif',contact:'Contact'};
 
 function renderWorkflow() {
-  const labels = [$('dossier-title').textContent, 'Proposition', 'Validation finale', 'Brouillon du site'];
-  const current = workflowStepIndex(state.status);
+  const labels = ['Saisie', 'Aperçu', 'Publication'];
+  const current = [0, 1, 1, 2][workflowStepIndex(state.status)];
   $('current-status').textContent = state.status === 'Archivé' ? 'Dossier archivé' : labels[current];
   const steps = $('steps'); steps.replaceChildren();
   labels.forEach((label, index) => {
@@ -1162,13 +1161,11 @@ $('save-revision').addEventListener('click',async()=>{
 $('cancel-generation').addEventListener('click',()=>cancelGeneration());
 $('reset-dossier').addEventListener('click', resetDossier);
 $('undo-reset').addEventListener('click', undoReset);
-$('back-to-dossier').addEventListener('click', () => {
+$('back-to-dossier').addEventListener('click', (event) => {
+  event.preventDefault();
   cancelGeneration();
   form.elements.sourceText.scrollIntoView({ behavior: 'smooth', block: 'center' });
   form.elements.sourceText.focus({ preventScroll: true });
-});
-$('mark-ready').addEventListener('click', () => {
-  if (act(() => markReady(state), 'Proposition prête pour la validation finale.')) focusStep('validation-title');
 });
 $('validate').addEventListener('click', async () => {
   if (!$('final-confirmation').checked) return feedback('Confirmez la relecture du texte et des visuels.', true);
@@ -1176,7 +1173,7 @@ $('validate').addEventListener('click', async () => {
   try {
     clearTimeout(cloudSaveTimer);
     while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
-    const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:$('reviewer').value,revision:cloudRevision,preview:state}),signal:AbortSignal.timeout(25000)});
+    const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:cloudRevision,preview:state}),signal:AbortSignal.timeout(25000)});
     const result=await response.json();if(!response.ok)throw new Error(result.error||'La publication a échoué.');
     state=result.state;cloudRevision=result.revision;cloudPending=false;cloudConflict=false;
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');

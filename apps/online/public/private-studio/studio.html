@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=retouches-1">
-  <link rel="stylesheet" href="studio-preview.css?v=retouches-1">
-  <script type="module" src="studio-mvp.js?v=retouches-1"></script>
+  <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
+  <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
+  <script type="module" src="studio-mvp.js?v=preview-flow"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -20,7 +20,7 @@
     <section id="editor-intro" class="intro">
       <p class="eyebrow">Atelier éditorial</p>
       <h1>Votre prochain contenu, <em>simplement.</em></h1>
-      <p>Ajoutez votre texte et vos visuels, puis composez une première proposition avec l’IA. Relisez les cartes et ajustez-les avant de préparer le brouillon du site.</p>
+      <p>Ajoutez votre texte et vos visuels, générez l’aperçu, puis relisez et publiez.</p>
     </section>
     <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button></nav>
     <div id="editor-view">
@@ -48,7 +48,6 @@
           <div class="fields">
             <label id="general-title-field">Titre du récit <input name="title" placeholder="Le titre exact de la couverture"><small>À renseigner si le titre ne figure pas déjà en tête du texte.</small></label>
             <label><span id="source-text-label">Texte du récit</span> <textarea name="sourceText" rows="10" placeholder="Collez votre récit ici."></textarea><small id="source-text-help">Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.</small></label>
-            <label>Consignes pour l’IA (facultatif) <textarea name="brief" rows="3" placeholder="Ex. Garder la couverture sans photo ou inviter à lire le récit complet."></textarea></label>
           </div>
           <section id="event-fields" class="event-fields" aria-labelledby="event-fields-title" hidden>
             <h3 id="event-fields-title">Les informations pratiques</h3>
@@ -85,21 +84,21 @@
             <div id="media-list" class="media-list"></div>
           </section>
           <details id="dossier-details" class="dossier-details">
-            <summary>Détails facultatifs</summary>
+            <summary>Sources (facultatif)</summary>
             <div class="fields">
-              <label id="general-theme-field">Rubrique du récit <select name="theme"><option>Récit</option><option>Repères historiques</option><option>Lieux</option><option>Portraits</option></select></label>
+              <label id="general-theme-field" hidden>Rubrique du récit <select name="theme"><option>Récit</option><option>Repères historiques</option><option>Lieux</option><option>Portraits</option></select></label>
               <label>Sources à conserver <textarea name="sources" rows="3" placeholder="Ex. Livre, archive ou lien utile"></textarea></label>
             </div>
           </details>
           <p id="intake-status" class="hint">Vérification de la connexion au modèle…</p>
           <p id="compose-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
-          <div class="action-row"><button type="submit" class="button primary">Composer avec l’IA</button></div>
+          <div class="action-row"><button type="submit" class="button primary">Générer l’aperçu</button></div>
         </form>
       </section>
       <div class="output-column">
         <section class="panel review-panel" aria-labelledby="review-title">
           <div class="panel-head"><p class="eyebrow">Étape 02</p>
-            <div class="review-heading"><h2 id="review-title" tabindex="-1">Proposition</h2><button id="story-templates" class="template-info-button" type="button" popovertarget="story-template-info" aria-label="Voir les gabarits de récit" title="Gabarits de récit">i</button></div>
+            <div class="review-heading"><h2 id="review-title" tabindex="-1">Aperçu</h2><button id="story-templates" class="template-info-button" type="button" popovertarget="story-template-info" aria-label="Voir les gabarits de récit" title="Gabarits de récit">i</button></div>
             <p id="review-help">Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.</p>
           </div>
           <section id="story-template-info" class="template-info" popover aria-labelledby="template-info-title">
@@ -157,19 +156,18 @@
             <section id="event-output" class="event-output" aria-labelledby="event-output-title" hidden><h3 id="event-output-title">Fiche de l’évènement</h3><dl id="event-output-details"></dl></section>
             <div id="proposal-checks" class="proposal-checks"></div>
             <p id="validation-gaps" class="pending-note"></p>
-            <div class="action-row"><button id="back-to-dossier" type="button" class="button secondary">Revenir au dossier</button><button id="mark-ready" type="button" class="button primary">Passer à la validation</button><button id="social-export" type="button" class="button secondary">Télécharger le dossier de proposition</button></div>
+            <section id="validation-panel" aria-label="Publier sur le site" hidden>
+              <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
+              <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
+              <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
+              <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
+            </section>
+            <p><a id="back-to-dossier" href="#dossier-title">Modifier le texte source</a></p>
+            <details class="dossier-details"><summary>Plus d’options</summary><button id="social-export" type="button" class="button secondary">Télécharger le dossier de proposition</button></details>
           </div>
         </section>
-        <section id="validation-panel" class="panel validation-panel" aria-labelledby="validation-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title" tabindex="-1">Validation finale</h2><p>Vérifiez le texte et les visuels. Valider publie immédiatement le Récit ou l’Événement sur le site.</p></div>
-          <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
-          <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
-          <label class="full-label" for="reviewer">Validé par <input id="reviewer" placeholder="Nom de la personne responsable"></label>
-          <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu le texte et les visuels de cette version.</label>
-          <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
-        </section>
         <section id="draft-panel" class="panel draft-panel" aria-labelledby="draft-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 04</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>
+          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>
           <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/logo-mark.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span id="wordpress-status" class="draft-chip">PUBLICATION WORDPRESS</span></div></article>
           <p id="draft-details" class="hint"></p>
           <div class="action-row"><a id="wordpress-link" class="button secondary" href="#" target="_blank" rel="noopener" hidden>Voir sur le site</a><button id="prepare-mailing" type="button" class="button primary">Préparer la lettre</button><button id="wordpress-trash" type="button" class="button secondary">Retirer du site</button></div>

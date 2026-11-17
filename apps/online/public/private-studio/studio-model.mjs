@@ -204,6 +204,7 @@ export function markReady(state) {
 }
 
 export function validate(state, reviewer) {
+  if (state.status === STATUSES[2]) state = markReady(state);
   if (state.status !== STATUSES[4]) throw new Error('La proposition doit être prête à valider.');
   const gaps = dossierGaps(state.proposals.at(-1).basis);
   if (gaps.length) throw new Error('Complétez le dossier avant de valider. Il manque ' + gaps.join(', ') + '.');
