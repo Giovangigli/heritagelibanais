@@ -1,3 +1,4 @@
+import {registerForPublishedEvent} from './event-registration-api.mjs';
 import {validPayload,findDraft} from './bridge-contract.mjs';
 import {renderStoryEmail,renderEventEmail} from './brevo-email.mjs';
 import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
@@ -18,9 +19,9 @@ async function boundedBody(request,limit=MAX_BODY){
   for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();throw error('Le dossier est trop volumineux.',413);}chunks.push(value);}
   const data=new Uint8Array(size);let offset=0;for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.byteLength;}return data;
 }
-async function bodyJson(request){
+async function bodyJson(request,limit=MAX_BODY){
   if(request.headers.get('content-type')?.split(';')[0]!=='application/json')throw error('Format de demande invalide.',415);
-  try{return JSON.parse(new TextDecoder().decode(await boundedBody(request)));}catch(e){if(e.status)throw e;throw error('Le dossier est illisible.');}
+  try{return JSON.parse(new TextDecoder().decode(await boundedBody(request,limit)));}catch(e){if(e.status)throw e;throw error('Le dossier est illisible.');}
 }
 function cryptoKey(env){
   if(!env.STUDIO_CONNECTION_KEY)throw error('La connexion hébergée doit être configurée.',503);
@@ -84,6 +85,7 @@ async function n8nStatus(env,access,fetchImpl){
 }
 export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={}){
   try{
+    if(request.method==='POST'&&new URL(request.url).pathname==='/api/events/register')return await registerForPublishedEvent(request,env,r=>bodyJson(r,4096),fetchImpl);
     if(!user?.userId)return json({error:'Reconnectez-vous au Studio.',signInUrl:'/signin-with-chatgpt?return_to=%2F'},401);
     const access=resolveStudioAccess(env,user);
     if(!access)throw error('Ce compte n’a pas accès au Studio privé.',403);

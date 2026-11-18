@@ -55,7 +55,8 @@ function renderedContent(proposal, uploadedMedia = []) {
   const eventDate = `${details.startDate || ''} ${details.startTime || ''}`.trim();
   const time = `<time datetime="${eventDateTime(details)}">${escapeHtml(eventDate)}</time>`;
   const practical = [details.venue, details.address, details.city, details.registrationUrl].filter(Boolean).map(value => `<p>${escapeHtml(value)}</p>`).join('');
-  return `<article class="event-hero studio-publication">${time}<div class="event-story-copy">${body}</div>${figures}<section class="event-practical"><h2>Informations pratiques</h2>${practical}</section>${sources}</article>`;
+  const registrationClass = details.registrationUrl?.trim() ? '' : ' studio-native-registration';
+  return `<article class="event-hero studio-publication${registrationClass}">${time}<div class="event-story-copy">${body}</div>${figures}<section class="event-practical"><h2>Informations pratiques</h2>${practical}</section>${sources}</article>`;
 }
 
 export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
