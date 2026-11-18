@@ -1,15 +1,14 @@
 # Héritage Libanais Studio
 
-This repository holds both studio applications in one project:
+This repository holds the complete private Studio application:
 
-- `apps/online`: the online studio and publishing workflow.
-- `apps/cards`: the card editing studio.
+- `apps/online`: editorial drafts and card editing, WordPress publishing, mailing, and Instagram work in progress.
 
-Each app remains independently deployable. See its README for setup and hosting details. Local secrets belong in each app's ignored `.dev.vars` or environment variables; never commit credentials.
+See the app README for setup and hosting details. Local secrets belong in its ignored `.dev.vars` or environment variables; never commit credentials.
 
 ## Verification
 
-With dependencies installed in both app directories, run `npm test`, `npm run lint`, and `npm run typecheck` from this directory.
+With dependencies installed in `apps/online`, run `npm test`, `npm run lint`, and `npm run typecheck` from this directory.
 
 See [FINAL_STUDIO_PLAN.md](FINAL_STUDIO_PLAN.md) for release gates and deferred social publishing work.
 
