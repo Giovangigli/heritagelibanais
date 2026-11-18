@@ -1,8 +1,8 @@
 # Final Studio plan
 
-Updated 17 November 2026. This is the release checklist for `apps/online`. The social editing UI remains available.
+Updated 18 November 2026. This is the release checklist for `apps/online`. The social editing UI remains available.
 
-The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site` (Sites version 21). Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
+The Studio v2 application is deployed privately at `https://heritage-libanais-studio.antoine-giovangigli.chatgpt.site`. Its WordPress publication and Brevo delivery still need the checks below before Joseph's full demo.
 
 ## Website publication
 
@@ -15,7 +15,7 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 
 ## Newsletter
 
-- Implemented in v2: after publication, **Préparer la lettre** selects the new WordPress post in Mailing. The editor can change the subject, inbox preview text, and introduction, preview the resulting newsletter, then explicitly confirm scheduling in Brevo. The send request binds to the reviewed content hash, so changing the text requires a new preview.
+- Implemented in v2: after publication, **Préparer la Newsletter** selects the new WordPress post in Mailing. The editor can change the subject, inbox preview text, and introduction, preview the resulting newsletter, then explicitly confirm scheduling in Brevo. The send request binds to the reviewed content hash, so changing the text requires a new preview.
 - Event reminders: Mailing can select **Rappel avant l’événement** for a future event, edit the same fields, preview, and explicitly confirm. The server checks that every scheduled batch is before the event. Reminders currently go to confirmed newsletter subscribers; event registrants will be a separate audience once registration exists.
 - Brevo key: the owner entered it once in the Studio form on 17 November. Its encrypted connection record is present in the live Studio database and is shared with authorized editors. The account check passes before storage; missing newsletter-list or sender setup is reported separately. Do not put the key in n8n or the repository.
 - DNS: OVH (`dns103.ovh.net`, `ns103.ovh.net`) is authoritative. On 17 November all Brevo verification, DKIM, and DMARC records were recognized and Brevo domain authentication succeeded. Existing OVH MX, SPF, DKIM and website records were preserved.
@@ -28,11 +28,14 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 - After a successful registration, send a transactional confirmation email through Brevo with the event title, date/time and time zone, venue/address, registration reference, practical information, and a link to the event. Send once per registration ID; record Brevo message ID and delivery state. Show an on-page confirmation even if email delivery is delayed, and make retry safe.
 - Add an owner view to export attendees and resend a confirmation, plus a cancellation path. For event edits or cancellation, prepare a separate reviewed message to affected registrants. Test registration, duplicate submission, capacity, email delivery, and cancellation before Joseph's demo.
 
-## Social publishing: deferred
+## Instagram publishing: included in the release
 
-- Keep the existing carousel preview and editing controls.
-- Still needed: render the approved carousel as downloadable portrait image files; verify text overflow and image crops on a phone; create a distinct Reel storyboard and rendered MP4/cover; package exact captions and media; validate image rights per destination.
-- Direct Instagram publication is out of the current release. It requires Meta account permissions, a separate approval step, processing status, and duplicate-safe retries. Manual upload can be the first supported path once the finished assets exist.
+Work on this in parallel with event registration and Newsletter delivery. Use the supplied Instagram technical reference as design input and verify version-specific limits and scopes against [Meta’s official publishing guide](https://developers.facebook.com/docs/instagram-platform/content-publishing/) and the connected app before enabling publishing.
+
+1. **Prepare media.** Render the approved carousel as ordered 1080 × 1350 JPEGs and check crops, overflow, credits and rights. Start with 2–10 slides, the Studio’s current editorial limit. Prepare a separate Reel storyboard and render a 1080 × 1920 H.264 MP4 with a cover and a distinct caption.
+2. **Connect Meta.** Verify the professional account, configure Instagram Login in the Meta app and verify the publishing scope for that app. Pin a supported API version, keep tokens on the server and provide a reconnect flow. Check whether Joseph's use requires additional app access or review.
+3. **Review and publish.** Show the final assets, caption and destination account in a separate Instagram confirmation. Provide Meta fetchable URLs for the reviewed assets only. Create the ordered carousel containers or Reel container, check processing status, publish when ready, and record the media ID and permalink. Reconcile ambiguous responses before retrying to avoid duplicate posts.
+4. **Release check.** Verify one carousel and one Reel with the authorized test account. Check that crop, order, caption, cover, processing and retry behavior match the preview. Keep manual upload available when assets are ready. Schedule publishing only after immediate publication passes.
 
 ## Joseph handover
 
