@@ -1,0 +1,12 @@
+{
+  "name": "heritage-libanais-studio",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:online && npm run test:cards",
+    "test:online": "node --test apps/online/lib/*.test.mjs",
+    "test:cards": "node --test apps/cards/lib/*.test.mjs",
+    "lint": "npm --prefix apps/online run lint && npm --prefix apps/cards run lint",
+    "typecheck": "node apps/online/node_modules/typescript/bin/tsc --noEmit -p apps/online/tsconfig.json && node apps/cards/node_modules/typescript/bin/tsc --noEmit -p apps/cards/tsconfig.json"
+  }
+}

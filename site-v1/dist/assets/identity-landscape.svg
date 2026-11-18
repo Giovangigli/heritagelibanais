@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 480" role="img" aria-labelledby="title desc">
+  <title id="title">Héritage Libanais — paysage éditorial</title>
+  <desc id="desc">Composition de la famille graphique : cèdre angulaire, montagnes et colonnade de Baalbek.</desc>
+  <rect width="720" height="480" fill="#F8F6F0"/>
+  <circle cx="355" cy="249" r="206" fill="none" stroke="#A6BAAA" stroke-width="2"/>
+  <path d="M0 405 204 157l168 207 111-140 237 181v75H0Z" fill="#A6BAAA"/>
+  <path d="M0 480 236 275l183 205Z" fill="#789A88"/>
+  <path d="M540 294H680V305H540ZM550 282H670V294H550ZM554 205H667V219H554ZM548 199H672V205H548ZM558 219H573V282H558ZM581 219H596V282H581ZM604 219H619V282H604ZM627 219H642V282H627ZM650 219H665V282H650Z" fill="#064E38"/>
+  <path d="M543 282H677V288H543ZM555 219H668V226H555Z" fill="#B9A98E"/>
+  <path d="M118 27H138L151 43H169V58L214 78L185 97L151 94L216 120L186 141L151 137L222 168L186 190L145 185L139 231H117L111 185L70 190L34 168L105 137L70 141L40 120L105 94L71 97L42 78L87 58V43H105Z" fill="#064E38" transform="translate(183 185) scale(.82)"/>
+  <path d="M0 464H720V480H0Z" fill="#EE2528"/>
+</svg>
