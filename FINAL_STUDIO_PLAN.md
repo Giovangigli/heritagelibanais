@@ -39,3 +39,10 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 - Studio v2 is deployed to the existing private Studio; complete the WordPress, theme, and mailing release gates before Joseph's end-to-end demo.
 - Add Joseph to the Sites access policy and `STUDIO_EDITOR_EMAILS`, using his own sign-in. Test as his account on a fresh browser: create Récit and Événement, edit, validate, see each WordPress page, prepare an email, and move a test post to Trash.
 - Keep connection administration with the owner. Confirm whether Joseph may schedule newsletters by setting `STUDIO_MAILING_EDITOR_EMAILS` only after the internal delivery test.
+
+### Mailing invitations and automatic messages
+
+- The Mailing picker groups published future events separately from stories. Invitations have their own template and continue through the editor’s preview and send confirmation.
+- The automatic-message previews are samples. Verify the newsletter welcome against the existing confirmed signup flow. Connect unsubscribe confirmation only after a verified unsubscribe, with duplicate delivery protection.
+- Use one Brevo list per WordPress event as the registration marker. Register from future event pages only and keep newsletter consent separate. Send a transactional confirmation with the actual event details after registration succeeds.
+- Scope reminders to the selected event’s registrants and show that audience before confirmation. Add a private CSV download in Studio using the same registration data. Verify that a registrant for a different event never appears in the audience or download.
