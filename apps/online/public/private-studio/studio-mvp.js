@@ -1262,14 +1262,23 @@ function mailingOverrides(){
 }
 function mailingPurposeVisibility(){
   const event=mailingPosts.find(post=>post.id===Number($('mailing-post').value))?.type==='evenement';
+  const csv=$('mailing-registrations-csv');
+  const postId=Number($('mailing-post').value);
+  csv.hidden=studioAccess.role!=='owner'||!event||postId<=0;
+  if(!csv.hidden)csv.href='/api/mailing/registrations.csv?postId='+postId;
   $('mailing-purpose-field').hidden=!event;
   if(!event)$('mailing-purpose').value='announcement';
 }
 function mailingTab(name){
   const mailing=name==='mailing';
-  $('editor-intro').hidden=mailing;$('editor-view').hidden=mailing;$('mailing-view').hidden=!mailing;
-  $('tab-editor').classList.toggle('active',!mailing);$('tab-mailing').classList.toggle('active',mailing);
-  $('tab-editor').toggleAttribute('aria-current',!mailing);$('tab-mailing').toggleAttribute('aria-current',mailing);
+  $('editor-intro').hidden=name!=='editor';
+  for(const section of ['editor','mailing','instagram']){
+    const selected=name===section;
+    $(section+'-view').hidden=!selected;
+    const tab=$('tab-'+section);
+    tab.classList.toggle('active',selected);
+    if(selected)tab.setAttribute('aria-current','page');else tab.removeAttribute('aria-current');
+  }
   if(mailing&&!mailingLoaded){mailingLoaded=true;mailingRefresh();}
 }
 async function mailingJson(path,options={}){
@@ -1353,6 +1362,31 @@ function mailingShowJob(job){
   if(job.error){const error=document.createElement('p');error.textContent=job.error;box.append(error);}
 }
 $('tab-editor').addEventListener('click',()=>mailingTab('editor'));
+$('tab-instagram').addEventListener('click',async()=>{
+  mailingTab('instagram');
+  const select=$('instagram-post');
+  const previous=select.value;
+  const status=$('instagram-status');
+  status.textContent='Chargement des récits…';
+  try{
+    const {posts}=await mailingJson('/api/mailing/content');
+    select.replaceChildren(new Option('Choisir un récit',''));
+    for(const post of posts.filter(item=>item.type==='recit')){
+      const option=new Option(post.title,String(post.id));
+      option.dataset.url=post.url;
+      select.add(option);
+    }
+    if([...select.options].some(option=>option.value===previous))select.value=previous;
+    select.dispatchEvent(new Event('change'));
+    status.textContent=select.options.length>1?'':'Aucun récit publié.';
+  }catch(error){status.textContent=error.message;}
+});
+$('instagram-post').addEventListener('change',()=>{
+  const url=$('instagram-post').selectedOptions[0]?.dataset.url;
+  const link=$('instagram-source');
+  link.hidden=!url;
+  if(url)link.href=url;
+});
 $('tab-mailing').addEventListener('click',()=>mailingTab('mailing'));
 $('mailing-automation-preview').addEventListener('click', async () => {
   const button = $('mailing-automation-preview');

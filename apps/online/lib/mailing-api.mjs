@@ -1,3 +1,4 @@
+import {listEventRegistrations} from './event-registrations.mjs';
 import {fetchPublishedContent} from './mailing-content.mjs';
 import {renderStoryEmail,renderEventEmail,renderAutomationPreview} from './brevo-email.mjs';
 
@@ -111,6 +112,28 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(!['welcome','registration','unsubscribe'].includes(kind))throw failure('Modèle inconnu.');
     return json(renderAutomationPreview(kind));
   }
+  if(path==='/api/mailing/registrations.csv'&&request.method==='GET'){
+    if(role!=='owner')throw failure('L’export est réservé au propriétaire du Studio.',403);
+    const eventPostId=Number(new URL(request.url).searchParams.get('postId'));
+    if(!Number.isSafeInteger(eventPostId)||eventPostId<=0)throw failure('Choisissez un événement WordPress.');
+    const lines=['Nom,Email,Inscription UTC'];
+    const cell=value=>{
+      const text=String(value??'');
+      return '"'+(/^[\s]*[=+@-]/u.test(text)?"'":"")+text.replaceAll('"','""')+'"';
+    };
+    let afterEmail='';
+    for(;;){
+      const page=await listEventRegistrations(db,{workspaceId,eventPostId,afterEmail,limit:500});
+      for(const row of page)lines.push([row.name,row.email,row.created_at].map(cell).join(','));
+      if(page.length<500)break;
+      afterEmail=page.at(-1).email;
+    }
+    return new Response('\uFEFF'+lines.join('\r\n'),{headers:{
+      'Content-Type':'text/csv; charset=utf-8','Cache-Control':'private, no-store',
+      'Content-Disposition':`attachment; filename="inscriptions-${eventPostId}.csv"`,
+      'X-Content-Type-Options':'nosniff',
+    }});
+  }
   if(path==='/api/mailing/status'&&request.method==='GET'){
     let connected=false;
     const checked=(status,reason,fields={})=>json({
@@ -164,7 +187,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const key=await connectionKey();
     if(!key)throw failure('La connexion Brevo doit être configurée avant de programmer cet envoi.',503);
     const {post,email,purpose}=await resolvedEmail(input,fetchImpl);
-    if(purpose==='reminder'&&Date.parse(post.eventDate)<=Date.parse(nextParisMorning(1)))throw failure('Cet événement est trop proche pour programmer un rappel demain matin.',409);
+    if(purpose==='reminder')throw failure('L’envoi des rappels sera disponible avec la liste des inscrits à cet événement.',409);
     const contentHash=await hash({postId:post.id,email});
     if(contentHash!==input.contentHash)throw failure('La publication ou l’e-mail a changé. Recommencez la prévisualisation.',409);
     const account=await expectedAccount(key,fetchImpl);
@@ -175,7 +198,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const people=await audience(key,fetchImpl);
     if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
     if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE} ; préparez une répartition supplémentaire.`,409);
-    if(purpose==='reminder'&&Date.parse(post.eventDate)<=Date.parse(nextParisMorning(Math.ceil(people.length/DAY_CAP))))throw failure('Le rappel ne peut pas atteindre tous les abonnés avant l’événement.',409);
+
     const sender=await publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL);
     if(!sender)throw failure('Authentifiez heritage-libanais.fr et activez une adresse expéditrice sur ce domaine avant un envoi public.',409);
     const replyTo=typeof env.BREVO_REPLY_TO==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.BREVO_REPLY_TO)?env.BREVO_REPLY_TO:sender.email;

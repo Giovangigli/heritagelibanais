@@ -7,7 +7,7 @@
   <title>Studio privé · Héritage Libanais</title>
   <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=newsletter-label"></script>
+  <script type="module" src="studio-mvp.js?v=instagram-tab"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -22,7 +22,7 @@
       <h1>Votre prochain contenu, <em>simplement.</em></h1>
       <p>Ajoutez votre texte et vos visuels, générez l’aperçu, puis relisez et publiez.</p>
     </section>
-    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button></nav>
+    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
     <div id="editor-view">
     <section class="workflow" aria-labelledby="workflow-title">
       <div class="section-head"><h2 id="workflow-title">Parcours du dossier</h2><strong id="current-status" aria-live="polite">Nouveau récit</strong></div>
@@ -195,6 +195,17 @@
     <section class="history" aria-labelledby="publications-title"><h2 id="publications-title">Publications du site</h2><button id="publications-refresh" type="button" class="button secondary">Actualiser</button><p id="publications-status" class="hint" role="status"></p><ul id="publications-list"></ul></section>
     <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Une validation publie l’article sur WordPress.</p>
     </div>
+    <section id="instagram-view" class="mailing-view" aria-labelledby="instagram-title" hidden>
+      <div class="panel-head"><h2 id="instagram-title">Instagram</h2></div>
+      <div class="mailing-card">
+        <h3>Carrousel</h3>
+        <label>Récit en ligne <select id="instagram-post"><option value="">Choisir un récit</option></select></label>
+        <p id="instagram-status" role="status"></p>
+        <a id="instagram-source" target="_blank" rel="noopener" hidden>Voir le récit sur le site</a>
+        <p>La publication sera disponible après la préparation des images et la connexion du compte Instagram.</p>
+      </div>
+      <div class="mailing-card"><h3>Reel</h3><p>En préparation</p></div>
+    </section>
     <section id="mailing-view" class="mailing-view" aria-labelledby="mailing-title" hidden>
       <div class="panel-head"><p class="eyebrow">La Newsletter / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez un récit publié ou un événement à venir. Le Studio vérifiera les abonnés confirmés, créera les campagnes Brevo et répartira jusqu’à 400 destinataires sur deux jours.</p></div>
       <details class="mailing-card">
@@ -214,6 +225,7 @@
         <div class="mailing-card-head"><h3>1. Publication</h3><button id="mailing-refresh" type="button" class="button secondary">Actualiser les publications</button></div>
         <label>Récit ou événement publié <select id="mailing-post"><option value="">Chargement des publications…</option></select></label>
         <label id="mailing-purpose-field" hidden>Type d’envoi pour l’événement <select id="mailing-purpose"><option value="invitation">Invitation à l’événement</option><option value="announcement">Annonce</option><option value="reminder">Rappel avant l’événement</option></select></label>
+        <a id="mailing-registrations-csv" class="button secondary" hidden>Télécharger les inscrits (CSV)</a>
         <p id="mailing-post-note" class="hint" role="status"></p>
         <label>Objet de l’e-mail <input id="mailing-subject-input" type="text" maxlength="160" placeholder="À lire · …"></label>
         <label>Texte d’aperçu <input id="mailing-preheader-input" type="text" maxlength="220" placeholder="Une phrase visible dans la boîte de réception"></label>
