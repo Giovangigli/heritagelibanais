@@ -196,7 +196,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
           if(added?.contacts?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
         }
         part.status='list_ready';await saveJob(db,job);
-        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':purpose==='invitation'?'Invitation':'La lettre'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
+        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':purpose==='invitation'?'Invitation':'La Newsletter'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
         if(!Number.isSafeInteger(campaign?.id))throw failure('La campagne Brevo n’a pas été créée.',502);
         part.campaignId=campaign.id;part.status='campaign_created';await saveJob(db,job);
         let detail=await brevo(key,`/emailCampaigns/${campaign.id}?excludeHtmlContent=true`,{fetchImpl});

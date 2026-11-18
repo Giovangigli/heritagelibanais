@@ -1171,7 +1171,7 @@ $('validate').addEventListener('click', async () => {
     state=result.state;cloudPending=false;cloudConflict=result.revision===null;
     if(!cloudConflict)cloudRevision=result.revision;
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
-    render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la lettre.');focusStep('draft-title');
+    render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la Newsletter.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }
   finally {button.disabled=false;}
 });
@@ -1211,7 +1211,7 @@ $('prepare-mailing').addEventListener('click',async()=>{
     $('mailing-post').value=id;
     $('mailing-intro').value=$('email-intro').value.trim()||state.draft.summary||'';
     mailingInvalidate();saveMailingDraft();
-    $('mailing-post-note').textContent='Publication sélectionnée. Modifiez l’introduction, puis prévisualisez la lettre.';
+    $('mailing-post-note').textContent='Publication sélectionnée. Modifiez l’introduction, puis prévisualisez la Newsletter.';
   }else $('mailing-post-note').textContent='La publication n’apparaît pas encore dans le catalogue WordPress. Actualisez dans quelques instants.';
 });
 $('email-preview-button').addEventListener('click', async () => {
@@ -1295,7 +1295,7 @@ async function refreshMailingConnection(){
       credentials_missing: 'L’administrateur doit configurer la connexion à Brevo.',
       credentials_rejected: 'L’administrateur doit vérifier la connexion à Brevo.',
       account_mismatch: 'Le compte Brevo configuré doit être vérifié par l’administrateur.',
-      list_missing: 'La liste de La lettre doit être vérifiée par l’administrateur.',
+      list_missing: 'La liste de La Newsletter doit être vérifiée par l’administrateur.',
       sender_not_ready: 'Brevo est connecté. L’adresse d’envoi reste à configurer.',
       provider_unavailable: 'Brevo est momentanément indisponible.',
       plan_mismatch: 'L’administrateur doit vérifier le forfait Brevo.',
