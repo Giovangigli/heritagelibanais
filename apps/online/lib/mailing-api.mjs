@@ -92,7 +92,7 @@ async function resolvedEmail(input,fetchImpl){
   const purpose=input.purpose||'announcement';
   if(!['announcement','reminder','invitation'].includes(purpose)||(purpose!=='announcement'&&post.type!=='evenement'))throw failure('Les invitations et rappels concernent uniquement les événements à venir.');
   const common={title:post.title,intro:input.intro.trim(),url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt,subject:input.subject?.trim(),previewText:input.previewText?.trim()};
-  const email=post.type==='evenement'?renderEventEmail({...common,date:post.date,purpose}):renderStoryEmail(common);
+  const email=post.type==='evenement'?renderEventEmail({...common,date:post.date,venue:post.venue,registrationUrl:post.registrationUrl,purpose}):renderStoryEmail(common);
   return {post,email,purpose};
 }
 async function hash(value){const bytes=new TextEncoder().encode(JSON.stringify(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}

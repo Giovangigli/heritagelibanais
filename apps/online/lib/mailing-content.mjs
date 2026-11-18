@@ -44,5 +44,22 @@ export function parsePublishedPosts(posts,now=Date.now()){
 export async function fetchPublishedContent(fetchImpl=fetch){
   const response=await fetchImpl(POSTS_URL,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new Error('Le catalogue du site est momentanément indisponible.');
-  return parsePublishedPosts(await response.json());
+  const posts = parsePublishedPosts(await response.json());
+  // This event is rendered by a WordPress page template, outside the posts feed.
+  const eventDate = '2026-11-28T16:00:00+01:00';
+  const url = 'https://heritage-libanais.fr/lidentite-libanaise-en-danger-2e-session/';
+  if (Date.parse(eventDate) > Date.now() && !posts.some(post => post.url === url)) {
+    posts.unshift({
+      id: -20261128,
+      type: 'evenement',
+      title: 'L’identité libanaise en danger — deuxième session',
+      url,
+      eventDate,
+      date: '28 novembre 2026 à 16 h',
+      intro: 'Le CCJFL et Héritage Libanais vous invitent à une deuxième session de cette conférence autour de l’histoire, de l’identité et de l’avenir du Liban.',
+      venue: 'Mairie du XVe · Salle des mariages · 31, rue Péclet, 75015 Paris',
+      registrationUrl: 'https://www.helloasso.com/associations/club-culturel-de-la-jeunesse-franco-libanaise/evenements/l-identite-libanaise-en-danger',
+    });
+  }
+  return posts;
 }

@@ -137,7 +137,7 @@ test('publication and preview survive missing Brevo credentials',async()=>{
     return Response.json(published);
   };
   const catalogue=await (await call('content',{fetchImpl})).json();
-  assert.equal(catalogue.posts[0].id,12);
+  assert.equal(catalogue.posts.find(post => post.id === 12)?.id,12);
   const preview=await (await call('preview',{
     fetchImpl,method:'POST',body:{postId:12,intro:'Un nouveau récit à découvrir cette semaine.'},
   })).json();
