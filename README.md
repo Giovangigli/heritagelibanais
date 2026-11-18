@@ -1,4 +1,4 @@
-# Héritage Libanais Studio v2
+# Héritage Libanais Studio
 
 This repository holds both studio applications in one project:
 
@@ -13,4 +13,4 @@ With dependencies installed in both app directories, run `npm test`, `npm run li
 
 See [FINAL_STUDIO_PLAN.md](FINAL_STUDIO_PLAN.md) for release gates and deferred social publishing work.
 
-The WordPress theme source is in `wordpress-theme/heritage-libanais/`; it deploys through WordPress separately from the private Studio.
+The WordPress theme and custom newsletter plugin live in the separate `Giovangigli/heritage-libanais-wordpress` repository. They deploy through WordPress separately from the private Studio.

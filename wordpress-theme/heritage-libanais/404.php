@@ -1,1 +1,0 @@
-<?php get_header(); ?><main id="contenu"><section class="container page-intro"><p class="eyebrow">404</p><h1 class="display">Cette page n'existe plus.</h1><p class="lede">Retrouvez les récits depuis l'accueil.</p><a class="button" href="<?php echo esc_url(home_url('/')); ?>">Retour à l'accueil ↗</a></section></main><?php get_footer(); ?>

@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500" role="img" aria-labelledby="title">
-  <title id="title">Arcades éditoriales</title>
-  <rect width="600" height="500" fill="#DCE8DF"/>
-  <circle cx="453" cy="120" r="80" fill="#B82F2B"/>
-  <path d="M60 500V271c0-117 95-212 212-212s212 95 212 212v229h-86V271c0-69-57-126-126-126s-126 57-126 126v229Z" fill="#123C32"/>
-  <path d="M265 500V338c0-78 63-141 141-141s141 63 141 141v162h-58V338c0-46-37-83-83-83s-83 37-83 83v162Z" fill="#7E9D89"/>
-</svg>
