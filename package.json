@@ -1,0 +1,10 @@
+{
+  "name": "heritage-libanais-studio",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test apps/online/lib/*.test.mjs",
+    "lint": "npm --prefix apps/online run lint",
+    "typecheck": "node apps/online/node_modules/typescript/bin/tsc --noEmit -p apps/online/tsconfig.json"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793803945415,
+      "tag": "0000_productive_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793902488351,
+      "tag": "0001_past_gressill",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794935933841,
+      "tag": "0002_empty_victor_mancha",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794987340648,
+      "tag": "0003_event_registrations",
+      "breakpoints": true
+    }
+  ]
+}

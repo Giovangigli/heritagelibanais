@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Studio privé · Héritage Libanais</title>
+  <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
+  <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
+  <script type="module" src="studio-mvp.js?v=instagram-tab"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Aller au dossier</a>
+  <header class="topbar">
+    <div class="brand"><img src="../dist/assets/logo.svg" alt="Héritage Libanais"><span>Studio éditorial <small>Récits et évènements</small></span></div>
+    <span class="private-badge">Espace privé</span><a id="admin-connection-link" href="/setup" class="button secondary" hidden>Connexions</a>
+  </header>
+  <p id="studio-loading" class="shell hint" role="status">Ouverture de votre dossier privé…</p>
+  <main id="main" class="shell" inert>
+    <section id="editor-intro" class="intro">
+      <p class="eyebrow">Atelier éditorial</p>
+      <h1>Votre prochain contenu, <em>simplement.</em></h1>
+      <p>Ajoutez votre texte et vos visuels, générez l’aperçu, puis relisez et publiez.</p>
+    </section>
+    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
+    <div id="editor-view">
+    <section class="workflow" aria-labelledby="workflow-title">
+      <div class="section-head"><h2 id="workflow-title">Parcours du dossier</h2><strong id="current-status" aria-live="polite">Nouveau récit</strong></div>
+      <ol id="steps" class="steps"></ol>
+    </section>
+    <div class="session-actions" aria-label="Gestion du dossier">
+      <button id="reset-dossier" type="button" class="button secondary">Recommencer à zéro</button>
+      <button id="cancel-generation" type="button" class="button secondary" hidden>Annuler l’attente</button>
+      <p id="generation-help" class="hint" hidden>Une demande déjà envoyée peut se terminer dans n8n ; son résultat sera ignoré après annulation.</p>
+    </div>
+    <div id="reset-notice" class="reset-notice" role="status" hidden>
+      <span>Dossier remis à zéro. Vous pouvez restaurer le précédent avant de commencer une nouvelle saisie.</span>
+      <button id="undo-reset" type="button" class="button secondary">Restaurer le dossier précédent</button>
+    </div>
+    <div class="workspace">
+      <section class="panel input-panel" aria-labelledby="dossier-title">
+        <div class="panel-head"><p class="eyebrow">Étape 01</p><h2 id="dossier-title" tabindex="-1">Nouveau récit</h2><p id="dossier-intro">Collez le texte relu de votre récit. Ajoutez des images si vous en avez.</p></div>
+        <form id="dossier-form">
+          <fieldset class="content-choice"><legend>Que préparez-vous ?</legend>
+            <label><input type="radio" name="contentType" value="recit" checked> Un récit</label>
+            <label><input type="radio" name="contentType" value="evenement"> Un évènement</label>
+          </fieldset>
+          <div class="fields">
+            <label id="general-title-field">Titre du récit <input name="title" placeholder="Le titre exact de la couverture"><small>À renseigner si le titre ne figure pas déjà en tête du texte.</small></label>
+            <label><span id="source-text-label">Texte du récit</span> <textarea name="sourceText" rows="10" placeholder="Collez votre récit ici."></textarea><small id="source-text-help">Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.</small></label>
+          </div>
+          <section id="event-fields" class="event-fields" aria-labelledby="event-fields-title" hidden>
+            <h3 id="event-fields-title">Les informations pratiques</h3>
+            <p class="hint">Renseignez ce que vous connaissez. Les informations manquantes seront signalées dans la proposition.</p>
+            <div class="fields two">
+              <label class="wide">Titre de l’évènement <input name="eventTitle" placeholder="Conférence, rencontre, exposition…"></label>
+              <label>Date de début <input name="event_startDate" placeholder="Ex. 22 novembre 2026"></label>
+              <label>Heure de début <input name="event_startTime" placeholder="Ex. 18 h 30"></label>
+              <label class="wide">Lieu ou accès en ligne <input name="event_venue" placeholder="Nom du lieu ou plateforme"></label>
+            </div>
+            <details class="dossier-details">
+              <summary>Autres informations pratiques (facultatif)</summary>
+              <div class="fields two">
+              <label>Date de fin <input name="event_endDate" placeholder="Si plusieurs jours"></label>
+              <label>Heure de fin <input name="event_endTime" placeholder="Si connue"></label>
+              <label>Fuseau horaire <input name="event_timezone" placeholder="Ex. Europe/Paris"></label>
+              <label class="wide">Adresse <input name="event_address" placeholder="Numéro et rue"></label>
+              <label>Ville <input name="event_city" placeholder="Ville ou commune"></label>
+              <label>Intervenants <textarea name="event_speakers" rows="2" placeholder="Un nom par ligne"></textarea></label>
+              <label class="wide">Lien d’inscription <input name="event_registrationUrl" type="url" placeholder="https://…"></label>
+              <label>Tarif <input name="event_price" placeholder="Ex. Entrée libre, si confirmé"></label>
+              <label>Contact <input name="event_contact" placeholder="Adresse ou téléphone fourni"></label>
+              </div>
+            </details>
+          </section>
+          <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Glisser des images ou choisir des fichiers">
+            <strong>Glissez les images ici</strong><span>ou cliquez pour choisir une ou plusieurs images</span>
+            <input id="media-files" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple aria-label="Choisir des images">
+          </div>
+          <p id="media-count" class="hint">Aucune image déposée.</p>
+          <section id="media-section" class="media-section" aria-labelledby="media-title" hidden>
+            <h3 id="media-title">Images déposées</h3>
+            <label class="confirmation"><input type="checkbox" name="usePhotos"> Utiliser ces images dans la proposition</label>
+            <div id="media-list" class="media-list"></div>
+          </section>
+          <details id="dossier-details" class="dossier-details">
+            <summary>Sources (facultatif)</summary>
+            <div class="fields">
+              <label id="general-theme-field" hidden>Rubrique du récit <select name="theme"><option>Récit</option><option>Repères historiques</option><option>Lieux</option><option>Portraits</option></select></label>
+              <label>Sources à conserver <textarea name="sources" rows="3" placeholder="Ex. Livre, archive ou lien utile"></textarea></label>
+            </div>
+          </details>
+          <p id="intake-status" class="hint">Vérification de la connexion au modèle…</p>
+          <p id="compose-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+          <div class="action-row"><button type="submit" class="button primary">Générer l’aperçu</button></div>
+        </form>
+      </section>
+      <div class="output-column">
+        <section class="panel review-panel" aria-labelledby="review-title">
+          <div class="panel-head"><p class="eyebrow">Étape 02</p>
+            <div class="review-heading"><h2 id="review-title" tabindex="-1">Aperçu</h2><button id="story-templates" class="template-info-button" type="button" popovertarget="story-template-info" aria-label="Voir les gabarits de récit" title="Gabarits de récit">i</button></div>
+            <p id="review-help">Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.</p>
+          </div>
+          <section id="story-template-info" class="template-info" popover aria-labelledby="template-info-title">
+            <div class="template-info-heading"><h3 id="template-info-title">Gabarits de récit</h3><button type="button" class="button secondary" popovertarget="story-template-info" popovertargetaction="hide">Fermer</button></div>
+            <p class="hint">Le Studio choisit un gabarit selon les proportions des images. Vous pouvez l’ajuster pendant la relecture.</p>
+            <div id="story-template-list" class="story-template-list"></div>
+          </section>
+          <div id="proposal-empty" class="empty">Votre proposition apparaîtra ici après la composition.</div>
+          <div id="proposal-area" hidden>
+            <div class="version-bar"><label for="version-select">Version affichée</label><select id="version-select"></select><span id="version-date"></span></div>
+            <div id="version-request" class="request-note" hidden></div>
+            <div id="revision-notice" class="revision-notice" tabindex="-1" aria-label="Modifications en attente" hidden>
+              <span role="status">Modifications en attente de validation. Valider crée une nouvelle version.</span>
+              <button id="accept-revision" type="button" class="button primary">Valider</button>
+              <button id="discard-revision" type="button" class="button secondary">Annuler</button>
+              <p id="revision-validation-error" class="hint error" role="status" hidden></p>
+            </div>
+            <div class="card-workbench">
+            <div class="card-editing">
+            <section id="card-editor" class="card-editor" aria-labelledby="card-editor-title">
+              <h3 id="card-editor-title" tabindex="-1">Modifier la carte à la main</h3>
+              <div class="fields">
+                <label for="card-select">Carte affichée <select id="card-select"></select></label>
+                <label>Titre <textarea id="card-title" rows="2" placeholder="Sans titre sur cette carte"></textarea></label>
+                <label class="card-text-field">Texte <textarea id="card-body" rows="8" placeholder="Texte de cette carte"></textarea><small id="card-body-help">L’IA conserve vos modifications du texte sauf si vous lui demandez de le réécrire.</small></label>
+                <label>Gabarit <select id="card-layout"></select></label>
+                <label>Fond de la carte <select id="card-background"><option value="">Automatique · alterné</option><option value="sage">Vert pâle</option><option value="sand">Beige</option></select></label>
+                <label id="card-relief-field">Relief du texte <select id="card-relief"><option value="simple">Simple</option><option value="filet">Filet rouge</option><option value="intertitre">Intertitre rouge</option></select></label>
+              </div>
+              <p id="card-edit-help" class="hint error" role="status" hidden></p>
+              <fieldset class="card-media-editor"><legend>Images de cette carte · dans l’ordre</legend><div id="card-media-list"></div><div class="add-card-media"><label for="card-add-media">Ajouter une image disponible</label><select id="card-add-media" aria-describedby="card-add-media-help"></select><button id="card-add-media-button" type="button" class="button secondary">Ajouter</button></div><p id="card-add-media-help" class="hint">Chaque image peut être utilisée une seule fois dans le carrousel. Pour la déplacer, retirez-la d’abord de sa carte.</p></fieldset>
+              <details id="card-practical-editor" class="card-practical-editor" hidden><summary>Modifier les informations pratiques</summary><div id="card-practical-fields" class="fields"></div></details>
+              <div class="card-order-actions"><button id="card-move-up" type="button" class="button secondary">← Déplacer avant</button><button id="card-move-down" type="button" class="button secondary">Déplacer après →</button><button id="card-add" type="button" class="button secondary">Ajouter une carte</button><button id="card-remove" type="button" class="button secondary">Retirer la carte</button></div>
+            </section>
+            <section id="correction-panel" class="card-editor correction-panel" aria-labelledby="correction-title">
+              <h3 id="correction-title">Modifier par IA</h3>
+              <p class="hint">La demande vise la carte affichée. Vous pouvez aussi indiquer un numéro de carte ou écrire « tout le récit ».</p>
+              <p id="revision-connection" class="hint" role="status">Vérification de la connexion au modèle…</p>
+              <div id="revision-connection-actions" class="action-row" hidden><button id="retry-connection" type="button" class="button secondary">Vérifier la connexion</button><a id="revision-setup-link" href="/setup" target="_blank" rel="noopener" class="button secondary" hidden>Configurer le modèle</a><button id="edit-without-ai" type="button" class="button secondary">Modifier à la main</button></div>
+              <label class="full-label" for="correction-request">Que faut-il changer ? <textarea id="correction-request" rows="3" placeholder="Ex. Ajoute un filet rouge sur cette carte. Ou raccourcis le texte de la carte 4."></textarea></label>
+              <p id="revision-basis" class="hint"></p>
+              <div class="action-row"><button id="save-revision" type="button" class="button primary">Envoyer la demande à l’IA</button></div>
+            </section>
+            </div>
+            <div id="proposal-preview" class="carousel-preview" aria-label="Aperçu de la proposition visuelle">
+              <div class="carousel-head"><span id="preview-label">APERÇU · RÉCIT</span><span id="slide-counter">1 / 1</span></div>
+              <div id="slide-stage" class="slide-stage"><div id="slide-frame" class="slide-frame" aria-live="polite"></div></div>
+              <div class="carousel-controls"><button id="slide-prev" type="button" aria-label="Carte précédente">←</button><button id="slide-next" type="button" aria-label="Carte suivante">→</button></div>
+              <p id="slide-fit-warning" class="slide-fit-warning" role="status"></p>
+            </div>
+            </div>
+            <div id="visual-direction" class="visual-direction"></div>
+            <section id="instruction-feedback" class="instruction-feedback" aria-labelledby="instruction-feedback-title" hidden><h3 id="instruction-feedback-title">Réponse aux consignes</h3><ul id="instruction-feedback-list"></ul></section>
+            <details id="composition-diff" class="composition-diff" hidden><summary>Voir ce qui a changé</summary><ul id="composition-diff-list"></ul></details>
+            <section id="event-output" class="event-output" aria-labelledby="event-output-title" hidden><h3 id="event-output-title">Fiche de l’évènement</h3><dl id="event-output-details"></dl></section>
+            <div id="proposal-checks" class="proposal-checks"></div>
+            <p id="validation-gaps" class="pending-note"></p>
+            <section id="validation-panel" aria-label="Publier sur le site" hidden>
+              <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
+              <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
+              <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
+              <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
+            </section>
+          </div>
+        </section>
+        <section id="draft-panel" class="panel draft-panel" aria-labelledby="draft-title" hidden>
+          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>
+          <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/logo-mark.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span id="wordpress-status" class="draft-chip">PUBLICATION WORDPRESS</span></div></article>
+          <p id="draft-details" class="hint"></p>
+          <div class="action-row"><a id="wordpress-link" class="button secondary" href="#" target="_blank" rel="noopener" hidden>Voir sur le site</a><button id="prepare-mailing" type="button" class="button primary">Préparer la Newsletter</button><button id="wordpress-trash" type="button" class="button secondary">Retirer du site</button></div>
+          <section class="email-workbench" aria-labelledby="email-workbench-title">
+            <h3 id="email-workbench-title">Préparer la Newsletter</h3>
+            <p class="hint">Prévisualisez un e-mail à partir de ce dossier validé. Aucun e-mail n’est envoyé depuis cet aperçu.</p>
+            <div class="fields">
+              <label>Titre de l’e-mail <input id="email-title" type="text"></label>
+              <label>Introduction <textarea id="email-intro" rows="4"></textarea></label>
+              <label>Lien vers la page publiée <input id="email-url" type="url" placeholder="https://heritage-libanais.fr/..."></label>
+            </div>
+            <div class="action-row"><button id="email-preview-button" type="button" class="button secondary">Prévisualiser l’e-mail</button></div>
+            <p id="email-preview-status" class="hint" role="status"></p>
+            <div id="email-preview-panel" hidden>
+              <p><strong>Objet :</strong> <span id="email-preview-subject"></span></p>
+              <p><strong>Aperçu :</strong> <span id="email-preview-preheader"></span></p>
+              <iframe id="email-preview-frame" title="Aperçu de l’e-mail" sandbox=""></iframe>
+            </div>
+          </section>
+          <button id="archive" type="button" class="button secondary">Archiver le dossier local</button>
+        </section>
+      </div>
+    </div>
+    <p id="cloud-save-status" class="hint" role="status"></p>
+    <p id="message" class="feedback" role="status" aria-live="polite"></p>
+    <section class="history" aria-labelledby="history-title"><h2 id="history-title">Historique des étapes</h2><ol id="history-list"></ol></section>
+    <section class="history" aria-labelledby="publications-title"><h2 id="publications-title">Publications du site</h2><button id="publications-refresh" type="button" class="button secondary">Actualiser</button><p id="publications-status" class="hint" role="status"></p><ul id="publications-list"></ul></section>
+    <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Une validation publie l’article sur WordPress.</p>
+    </div>
+    <section id="instagram-view" class="mailing-view" aria-labelledby="instagram-title" hidden>
+      <div class="panel-head"><h2 id="instagram-title">Instagram</h2></div>
+      <div class="mailing-card">
+        <h3>Carrousel</h3>
+        <label>Récit en ligne <select id="instagram-post"><option value="">Choisir un récit</option></select></label>
+        <p id="instagram-status" role="status"></p>
+        <a id="instagram-source" target="_blank" rel="noopener" hidden>Voir le récit sur le site</a>
+        <p>La publication sera disponible après la préparation des images et la connexion du compte Instagram.</p>
+      </div>
+      <div class="mailing-card"><h3>Reel</h3><p>En préparation</p></div>
+    </section>
+    <section id="mailing-view" class="mailing-view" aria-labelledby="mailing-title" hidden>
+      <div class="panel-head"><p class="eyebrow">La Newsletter / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez un récit publié ou un événement à venir. Le Studio vérifiera les abonnés confirmés, créera les campagnes Brevo et répartira jusqu’à 400 destinataires sur deux jours.</p></div>
+      <details class="mailing-card">
+        <summary>Modèles d’e-mails automatiques</summary>
+        <p>Maquettes à prévisualiser. Les déclencheurs et la livraison restent à vérifier.</p>
+        <label>Modèle <select id="mailing-automation-template"><option value="welcome">Bienvenue dans La Newsletter</option><option value="registration">Confirmation d’inscription à un événement</option><option value="unsubscribe">Confirmation de désinscription de La Newsletter</option></select></label>
+        <button id="mailing-automation-preview" type="button" class="button secondary">Prévisualiser le modèle</button>
+        <p id="mailing-automation-subject" role="status"></p>
+        <iframe id="mailing-automation-frame" title="Aperçu du modèle automatique" sandbox hidden width="100%" height="520"></iframe>
+      </details>
+      <div id="mailing-connection" class="mailing-card">
+        <h3>Connexion à Brevo</h3><p id="mailing-connection-status" class="hint" role="status">Vérification de la connexion…</p>
+        <details id="mailing-setup" hidden><summary>Gérer la connexion Brevo</summary><p class="hint">Réglage administrateur. Renseignez une fois la clé API v3 réservée au Studio. La clé est chiffrée côté serveur.</p><label>Clé API v3 Brevo <input id="mailing-api-key" type="password" autocomplete="new-password" placeholder="Clé API v3"></label><button id="mailing-connect" type="button" class="button secondary">Vérifier et enregistrer</button></details>
+        <button id="mailing-recheck" type="button" class="button secondary">Vérifier la connexion</button>
+      </div>
+      <div class="mailing-card">
+        <div class="mailing-card-head"><h3>1. Publication</h3><button id="mailing-refresh" type="button" class="button secondary">Actualiser les publications</button></div>
+        <label>Récit ou événement publié <select id="mailing-post"><option value="">Chargement des publications…</option></select></label>
+        <label id="mailing-purpose-field" hidden>Type d’envoi pour l’événement <select id="mailing-purpose"><option value="invitation">Invitation à l’événement</option><option value="announcement">Annonce</option><option value="reminder">Rappel avant l’événement</option></select></label>
+        <a id="mailing-registrations-csv" class="button secondary" hidden>Télécharger les inscrits (CSV)</a>
+        <p id="mailing-post-note" class="hint" role="status"></p>
+        <label>Objet de l’e-mail <input id="mailing-subject-input" type="text" maxlength="160" placeholder="À lire · …"></label>
+        <label>Texte d’aperçu <input id="mailing-preheader-input" type="text" maxlength="220" placeholder="Une phrase visible dans la boîte de réception"></label>
+        <label>Introduction de l’e-mail <textarea id="mailing-intro" rows="4" placeholder="Présentez ce récit ou cet événement en quelques phrases."></textarea></label>
+      </div>
+      <div class="mailing-card">
+        <h3>2. Destinataires et aperçu</h3><p id="mailing-audience" class="hint" role="status">Vérification de la liste newsletter…</p>
+        <p class="hint">Le Studio réserve 50 e-mails par jour pour les confirmations et les bienvenues. Il programme au plus 250 lettres par jour, à 10 h, à partir du lendemain.</p>
+        <button id="mailing-preview" type="button" class="button secondary">Prévisualiser la Newsletter</button>
+        <p id="mailing-preview-status" class="hint" role="status"></p>
+        <div id="mailing-preview-panel" hidden><p><strong>Objet :</strong> <span id="mailing-subject"></span></p><p><strong>Aperçu :</strong> <span id="mailing-preheader"></span></p><iframe id="mailing-preview-frame" title="Aperçu de la Newsletter" sandbox=""></iframe></div>
+      </div>
+      <div class="mailing-card">
+        <h3>3. Programmer l’envoi</h3><label id="mailing-confirmation" class="confirmation"><input id="mailing-confirm" type="checkbox"> J’ai relu le contenu, le lien et les destinataires. Je veux programmer cet envoi dans Brevo.</label>
+        <button id="mailing-send" type="button" class="button primary" disabled>Programmer dans Brevo</button><p id="mailing-send-status" class="hint" role="status"></p>
+        <div id="mailing-job" class="mailing-job" hidden></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
