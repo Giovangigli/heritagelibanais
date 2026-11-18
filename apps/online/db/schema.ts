@@ -1,4 +1,4 @@
-import {sqliteTable,text,integer} from 'drizzle-orm/sqlite-core';
+import {sqliteTable,text,integer,uniqueIndex} from 'drizzle-orm/sqlite-core';
 export const connections=sqliteTable('studio_connections',{
   userId:text('user_id').primaryKey(),
   encryptedToken:text('encrypted_token').notNull(),
@@ -29,3 +29,15 @@ export const wordpressPublications=sqliteTable('studio_wordpress_publications',{
   status:text('status').notNull(),
   createdAt:text('created_at').notNull(),
 });
+
+
+export const eventRegistrations = sqliteTable('studio_event_registrations', {
+  id: text('id').primaryKey(),
+  workspaceId: text('workspace_id').notNull(),
+  eventPostId: integer('event_post_id').notNull(),
+  email: text('email').notNull(),
+  name: text('name').notNull(),
+  createdAt: text('created_at').notNull(),
+}, table => [
+  uniqueIndex('studio_event_registration_email').on(table.workspaceId, table.eventPostId, table.email),
+]);
