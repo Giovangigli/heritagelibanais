@@ -175,7 +175,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const registrations=post.id>0 && input.purpose==='reminder'
       ?await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,limit:MAX_AUDIENCE+1})
       :null;
-    return json({post,email,registeredCount:input.purpose==='reminder'?(registrations?.length??0):null,contentHash:await hash({postId:post.id,email})});
+    return json({post,email,registeredCount:input.purpose==='reminder'?(registrations?.length??0):null,contentHash:await hash({postId:post.id,email,...(registrations?{recipients:registrations.map(row=>row.email)}:{})})});
   }
   if(path==='/api/mailing/jobs'&&request.method==='GET'){
     const rows=await db.prepare('SELECT state_json FROM studio_mailing_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').bind(workspaceUserId).all();
@@ -191,8 +191,6 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(!key)throw failure('La connexion Brevo doit être configurée avant de programmer cet envoi.',503);
     const {post,email,purpose}=await resolvedEmail(input,fetchImpl);
 
-    const contentHash=await hash({postId:post.id,email});
-    if(contentHash!==input.contentHash)throw failure('La publication ou l’e-mail a changé. Recommencez la prévisualisation.',409);
     const account=await expectedAccount(key,fetchImpl);
     const plan=freeCampaignPlan(account);
     if(!plan)throw failure('Le forfait Free Brevo a changé. Vérifiez-le avant l’envoi.',409);
@@ -211,6 +209,8 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
       if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
       if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE}.`,409);
     }
+    const contentHash=await hash({postId:post.id,email,...(purpose==='reminder'?{recipients:people.map(row=>row.email)}:{})});
+    if(contentHash!==input.contentHash)throw failure('La publication, l’e-mail ou les destinataires ont changé. Recommencez la prévisualisation.',409);
     const sender=await publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL);
     if(!sender)throw failure('Authentifiez heritage-libanais.fr et activez une adresse expéditrice sur ce domaine avant un envoi public.',409);
     const replyTo=typeof env.BREVO_REPLY_TO==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.BREVO_REPLY_TO)?env.BREVO_REPLY_TO:sender.email;

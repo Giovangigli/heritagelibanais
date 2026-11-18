@@ -16,26 +16,26 @@ The Studio v2 application is deployed privately at `https://heritage-libanais-st
 ## Newsletter
 
 - Implemented in v2: after publication, **Préparer la Newsletter** selects the new WordPress post in Mailing. The editor can change the subject, inbox preview text, and introduction, preview the resulting newsletter, then explicitly confirm scheduling in Brevo. The send request binds to the reviewed content hash, so changing the text requires a new preview.
-- Event reminders: Mailing can select **Rappel avant l’événement** for a future event, edit the same fields, preview, and explicitly confirm. The server checks that every scheduled batch is before the event. Reminders currently go to confirmed newsletter subscribers; event registrants will be a separate audience once registration exists.
+- Event reminders: Mailing can select **Rappel avant l’événement** for a future event, edit the same fields, preview, and explicitly confirm. The server checks that every scheduled batch is before the event. The deployed version still uses the Newsletter audience for reminders. Do not use that reminder action for registrants. The GitHub branch scopes reminders to the selected event and blocks empty lists. Deploy it together with migration 0003.
 - Brevo key: the owner entered it once in the Studio form on 17 November. Its encrypted connection record is present in the live Studio database and is shared with authorized editors. The account check passes before storage; missing newsletter-list or sender setup is reported separately. Do not put the key in n8n or the repository.
 - DNS: OVH (`dns103.ovh.net`, `ns103.ovh.net`) is authoritative. On 17 November all Brevo verification, DKIM, and DMARC records were recognized and Brevo domain authentication succeeded. Existing OVH MX, SPF, DKIM and website records were preserved.
 - Brevo setup: the key is stored encrypted in the Studio; `heritage-libanais.fr` is verified and authenticated, and `contact@heritage-libanais.fr` is active. The Sites runtime has `BREVO_SENDER_EMAIL=contact@heritage-libanais.fr` and `BREVO_REPLY_TO=heritage.libanais@gmail.com`. List 3 has four contacts, of whom three currently pass the Studio consent filter. Release gate: preview and send an internal campaign, inspect actual delivery and unsubscribe behavior before a public mailing.
 - Delivery gate: verify unsubscribe handling before a second batch, daily quota across multiple editions, partial-failure recovery, and actual delivery status. Do not treat “scheduled” as “delivered.”
 
-## Event registration and confirmation: planned
+## Event registration, confirmation, reminders and CSV
 
-- Add a registration form to each event page with name, email, optional attendee count, explicit privacy notice, capacity/waitlist rules, and duplicate registration handling. Store registrations in a private database with event ID and confirmation status. Keep registration consent separate from newsletter consent.
+- Add a native WordPress form to future Studio event pages without external booking. The 28 November conference keeps HelloAsso. Add the form with name, email, optional attendee count, explicit privacy notice, capacity/waitlist rules, and duplicate registration handling. Store registrations in a private database with event ID and confirmation status. Keep registration consent separate from newsletter consent.
 - After a successful registration, send a transactional confirmation email through Brevo with the event title, date/time and time zone, venue/address, registration reference, practical information, and a link to the event. Send once per registration ID; record Brevo message ID and delivery state. Show an on-page confirmation even if email delivery is delayed, and make retry safe.
 - Add an owner view to export attendees and resend a confirmation, plus a cancellation path. For event edits or cancellation, prepare a separate reviewed message to affected registrants. Test registration, duplicate submission, capacity, email delivery, and cancellation before Joseph's demo.
 
-## Instagram publishing: included in the release
+## Instagram carousels and Reel WIP
 
-Work on this in parallel with event registration and Newsletter delivery. Use the supplied Instagram technical reference as design input and verify version-specific limits and scopes against [Meta’s official publishing guide](https://developers.facebook.com/docs/instagram-platform/content-publishing/) and the connected app before enabling publishing.
+The branch includes an Instagram tab that selects a published Récit. The editor will review its carousel and publish it from there once rendering and Meta Login are connected. Reel video remains WIP. Work on this in parallel with event registration and Newsletter delivery. Use the supplied Instagram technical reference as design input and verify version-specific limits and scopes against [Meta’s official publishing guide](https://developers.facebook.com/docs/instagram-platform/content-publishing/) and the connected app before enabling publishing.
 
-1. **Prepare media.** Render the approved carousel as ordered 1080 × 1350 JPEGs and check crops, overflow, credits and rights. Start with 2–10 slides, the Studio’s current editorial limit. Prepare a separate Reel storyboard and render a 1080 × 1920 H.264 MP4 with a cover and a distinct caption.
+1. **Prepare media.** Render the approved carousel as ordered 1080 × 1350 JPEGs and check crops, overflow, credits and rights. Start with 2–10 slides, the Studio’s current editorial limit. Reel storyboard, video rendering and covers are a later milestone.
 2. **Connect Meta.** Verify the professional account, configure Instagram Login in the Meta app and verify the publishing scope for that app. Pin a supported API version, keep tokens on the server and provide a reconnect flow. Check whether Joseph's use requires additional app access or review.
-3. **Review and publish.** Show the final assets, caption and destination account in a separate Instagram confirmation. Provide Meta fetchable URLs for the reviewed assets only. Create the ordered carousel containers or Reel container, check processing status, publish when ready, and record the media ID and permalink. Reconcile ambiguous responses before retrying to avoid duplicate posts.
-4. **Release check.** Verify one carousel and one Reel with the authorized test account. Check that crop, order, caption, cover, processing and retry behavior match the preview. Keep manual upload available when assets are ready. Schedule publishing only after immediate publication passes.
+3. **Review and publish.** Show the final assets, caption and destination account in a separate Instagram confirmation. Provide Meta fetchable URLs for the reviewed assets only. Create the ordered carousel containers, check processing status, publish when ready, and record the media ID and permalink. Reconcile ambiguous responses before retrying to avoid duplicate posts.
+4. **Release check.** Verify one carousel with the authorized test account. Check that crop, order, caption, cover, processing and retry behavior match the preview. Keep manual upload available when assets are ready. Schedule publishing only after immediate publication passes.
 
 ## Joseph handover
 
@@ -43,15 +43,13 @@ Work on this in parallel with event registration and Newsletter delivery. Use th
 - Add Joseph to the Sites access policy and `STUDIO_EDITOR_EMAILS`, using his own sign-in. Test as his account on a fresh browser: create Récit and Événement, edit, validate, see each WordPress page, prepare an email, and move a test post to Trash.
 - Keep connection administration with the owner. Confirm whether Joseph may schedule newsletters by setting `STUDIO_MAILING_EDITOR_EMAILS` only after the internal delivery test.
 
-### Mailing invitations and automatic messages
+## Release order
 
-- The Mailing picker groups published future events separately from stories. Invitations have their own template and continue through the editor’s preview and send confirmation.
-- The automatic-message previews are samples. Verify the newsletter welcome against the existing confirmed signup flow. Connect unsubscribe confirmation only after a verified unsubscribe, with duplicate delivery protection.
-- Use one Brevo list per WordPress event as the registration marker. Register from future event pages only and keep newsletter consent separate. Send a transactional confirmation with the actual event details after registration succeeds.
-- Scope reminders to the selected event’s registrants and show that audience before confirmation. Add a private CSV download in Studio using the same registration data. Verify that a registrant for a different event never appears in the audience or download.
+1. **WordPress and Newsletter** — Recheck publication from the current Studio preview. Verify the Brevo signup confirmation and welcome with one internal address. Connect unsubscribe confirmation to a verified unsubscribe and test duplicate protection. Invitations use the Newsletter audience and continue through explicit preview and send confirmation.
+2. **Registrations** — Apply migration 0003. Connect the native WordPress form and the transactional confirmation. Synchronize addresses to Brevo without adding them to the Newsletter list. Verify CSV access, duplicate submissions, and audience separation using two events. Enable reminder delivery only after these checks.
+3. **Instagram**, in parallel — Build carousel rendering for a published Récit and connect the professional account. Verify one reviewed carousel through publication and permalink. Keep Reel marked WIP.
+4. **Joseph's demo** — Walk through the live Studio with his editor account and verify each enabled action with test content.
 
-### Public event registration rollout
+### Registration acceptance test
 
-- Add a native WordPress form to future Studio event pages without an external booking link. The November 28 conference keeps its existing HelloAsso booking link.
-- Submit through WordPress to the Studio on the server, verify the published event and date, deduplicate registrations and synchronize the contact with Brevo without adding them to the Newsletter list.
-- Trigger the confirmation once per registration. Apply migration 0003 before enabling the form or the Studio registration export. Test two separate events with internal addresses before production use.
+- Publish a clearly labeled “TEST STUDIO — Inscription à un événement” with a future date and native registration enabled. Use an internal test address to submit the form, check that the confirmation arrives with the correct date and venue, and repeat with that address to verify deduplication. Check the private CSV and reminder preview, then move the test event to WordPress Trash.
