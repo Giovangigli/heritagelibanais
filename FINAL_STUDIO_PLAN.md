@@ -49,3 +49,9 @@ Work on this in parallel with event registration and Newsletter delivery. Use th
 - The automatic-message previews are samples. Verify the newsletter welcome against the existing confirmed signup flow. Connect unsubscribe confirmation only after a verified unsubscribe, with duplicate delivery protection.
 - Use one Brevo list per WordPress event as the registration marker. Register from future event pages only and keep newsletter consent separate. Send a transactional confirmation with the actual event details after registration succeeds.
 - Scope reminders to the selected event’s registrants and show that audience before confirmation. Add a private CSV download in Studio using the same registration data. Verify that a registrant for a different event never appears in the audience or download.
+
+### Public event registration rollout
+
+- Add a native WordPress form to future Studio event pages without an external booking link. The November 28 conference keeps its existing HelloAsso booking link.
+- Submit through WordPress to the Studio on the server, verify the published event and date, deduplicate registrations and synchronize the contact with Brevo without adding them to the Newsletter list.
+- Trigger the confirmation once per registration. Apply migration 0003 before enabling the form or the Studio registration export. Test two separate events with internal addresses before production use.

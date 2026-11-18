@@ -1436,8 +1436,8 @@ $('mailing-preview').addEventListener('click',async()=>{
     mailingRequestId=crypto.randomUUID();
     $('mailing-subject').textContent=mailingPreview.email.subject;$('mailing-preheader').textContent=mailingPreview.email.previewText;
     $('mailing-preview-frame').srcdoc=mailingPreview.email.html;$('mailing-preview-panel').hidden=false;
-    $('mailing-preview-status').textContent='Aperçu prêt. Aucun e-mail n’a encore été programmé.';
-    $('mailing-send').disabled=!mailingCanSend;
+    $('mailing-preview-status').textContent=mailingPreview.registeredCount===null?'Aperçu prêt. Aucun e-mail n’a encore été programmé.':`${mailingPreview.registeredCount} inscrit(s) à cet événement. Aucun e-mail programmé.`;
+    $('mailing-send').disabled=!mailingCanSend||mailingPreview.registeredCount===0;
   }catch(e){$('mailing-preview-status').textContent=e.message;}
   finally{button.disabled=false;}
 });

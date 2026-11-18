@@ -123,7 +123,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     };
     let afterEmail='';
     for(;;){
-      const page=await listEventRegistrations(db,{workspaceId,eventPostId,afterEmail,limit:500});
+      const page=await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId,afterEmail,limit:500});
       for(const row of page)lines.push([row.name,row.email,row.created_at].map(cell).join(','));
       if(page.length<500)break;
       afterEmail=page.at(-1).email;
@@ -172,7 +172,10 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
   }
   if(path==='/api/mailing/preview'&&request.method==='POST'){
     const input=await bodyJson(request);const {post,email}=await resolvedEmail(input,fetchImpl);
-    return json({post,email,contentHash:await hash({postId:post.id,email})});
+    const registrations=post.id>0 && input.purpose==='reminder'
+      ?await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,limit:MAX_AUDIENCE+1})
+      :null;
+    return json({post,email,registeredCount:input.purpose==='reminder'?(registrations?.length??0):null,contentHash:await hash({postId:post.id,email})});
   }
   if(path==='/api/mailing/jobs'&&request.method==='GET'){
     const rows=await db.prepare('SELECT state_json FROM studio_mailing_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').bind(workspaceUserId).all();
@@ -187,18 +190,27 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const key=await connectionKey();
     if(!key)throw failure('La connexion Brevo doit être configurée avant de programmer cet envoi.',503);
     const {post,email,purpose}=await resolvedEmail(input,fetchImpl);
-    if(purpose==='reminder')throw failure('L’envoi des rappels sera disponible avec la liste des inscrits à cet événement.',409);
+
     const contentHash=await hash({postId:post.id,email});
     if(contentHash!==input.contentHash)throw failure('La publication ou l’e-mail a changé. Recommencez la prévisualisation.',409);
     const account=await expectedAccount(key,fetchImpl);
     const plan=freeCampaignPlan(account);
     if(!plan)throw failure('Le forfait Free Brevo a changé. Vérifiez-le avant l’envoi.',409);
     if(quotaExhausted(plan))throw failure('Le quota quotidien Brevo est atteint. Réessayez après son renouvellement.',409);
-    await verifyNewsletterList(key,fetchImpl);
-    const people=await audience(key,fetchImpl);
-    if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
-    if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE} ; préparez une répartition supplémentaire.`,409);
-
+    let people;
+    if(purpose==='reminder'){
+      if(post.id<=0)throw failure('Les inscriptions à cet événement sont gérées en dehors du Studio.',409);
+      const registrations=await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,limit:MAX_AUDIENCE+1});
+      if(!registrations.length)throw failure('Aucune inscription enregistrée pour cet événement.',409);
+      if(registrations.length>MAX_AUDIENCE)throw failure('Cet événement dépasse la limite de 400 inscrits par envoi.',409);
+      if(Date.parse(post.eventDate)<=Date.parse(nextParisMorning(Math.ceil(registrations.length/DAY_CAP))))throw failure('Le rappel ne peut pas être envoyé à tous les inscrits avant l’événement.',409);
+      people=registrations.map(({email})=>({email}));
+    }else{
+      await verifyNewsletterList(key,fetchImpl);
+      people=await audience(key,fetchImpl);
+      if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
+      if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE}.`,409);
+    }
     const sender=await publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL);
     if(!sender)throw failure('Authentifiez heritage-libanais.fr et activez une adresse expéditrice sur ce domaine avant un envoi public.',409);
     const replyTo=typeof env.BREVO_REPLY_TO==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.BREVO_REPLY_TO)?env.BREVO_REPLY_TO:sender.email;
@@ -210,13 +222,13 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(JSON.parse(existing.state_json).id!==job.id)return json({job:JSON.parse(existing.state_json)});
     try{
       for(let i=0;i<batches.length;i++){
-        const ids=batches[i].map(person=>person.id),scheduledAt=nextParisMorning(i+1);
+        const recipients=batches[i].map(person=>purpose==='reminder'?person.email:person.id),scheduledAt=nextParisMorning(i+1);
         const list=await brevo(key,'/contacts/lists',{method:'POST',body:{name:`Mailing Héritage Libanais · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,folderId:1},fetchImpl});
         if(!Number.isSafeInteger(list?.id))throw failure('La liste de diffusion n’a pas été créée.',502);
-        const part={listId:list.id,count:ids.length,scheduledAt,campaignId:null,status:'list_created'};job.batches.push(part);await saveJob(db,job);
-        for(let n=0;n<ids.length;n+=150){
-          const added=await brevo(key,`/contacts/lists/${list.id}/contacts`,{method:'POST',body:{ids:ids.slice(n,n+150)},fetchImpl});
-          if(added?.contacts?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
+        const part={listId:list.id,count:recipients.length,scheduledAt,campaignId:null,status:'list_created'};job.batches.push(part);await saveJob(db,job);
+        for(let n=0;n<recipients.length;n+=150){
+          const added=await brevo(key,`/contacts/lists/${list.id}/contacts${purpose==='reminder'?'/add':''}`,{method:'POST',body:{[purpose==='reminder'?'emails':'ids']:recipients.slice(n,n+150)},fetchImpl});
+          if(added?.contacts?.failure?.length||added?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
         }
         part.status='list_ready';await saveJob(db,job);
         const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':purpose==='invitation'?'Invitation':'La Newsletter'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});

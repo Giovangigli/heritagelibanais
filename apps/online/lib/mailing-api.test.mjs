@@ -33,7 +33,7 @@ function call(route,{actor=editor,access=editorAccess,env={},db=blockedDb,fetchI
 }
 function database(){
   const sql=new DatabaseSync(':memory:');
-  for(const file of ['0000_productive_mister_fear.sql','0001_past_gressill.sql']){
+  for(const file of ['0000_productive_mister_fear.sql','0001_past_gressill.sql','0003_event_registrations.sql']){
     sql.exec(readFileSync(new URL('../drizzle/'+file,import.meta.url),'utf8'));
   }
   const db={prepare(query){
@@ -155,7 +155,11 @@ test('an event reminder has distinct preview content and a story cannot be remin
   const eventDate=new Date(Date.now()+7*86400000).toISOString();
   const fetchImpl=async()=>Response.json([...published,{id:13,link:'https://heritage-libanais.fr/evenement/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero"><time datetime="${eventDate}">Bientôt</time></article>`}}]);
   const input={postId:13,intro:'Nous vous attendons pour cette rencontre.',purpose:'reminder'};
-  const preview=await (await call('preview',{fetchImpl,method:'POST',body:input})).json();
+  const {db,sql}=database();
+  sql.prepare('INSERT INTO studio_event_registrations (id, workspace_id, event_post_id, email, name, created_at) VALUES (?,?,?,?,?,?)').run('a','owner',13,'a@example.org','A',eventDate);
+  sql.prepare('INSERT INTO studio_event_registrations (id, workspace_id, event_post_id, email, name, created_at) VALUES (?,?,?,?,?,?)').run('b','owner',14,'b@example.org','B',eventDate);
+  const preview=await (await call('preview',{db,fetchImpl,method:'POST',body:input})).json();
+  assert.equal(preview.registeredCount,1);
   assert.match(preview.email.subject,/^Rappel/);
   assert.match(preview.email.html,/Rappel de l’événement/);
   await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/invitations et rappels concernent uniquement/);
