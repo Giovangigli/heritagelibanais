@@ -7,7 +7,7 @@
   <title>Studio privé · Héritage Libanais</title>
   <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=no-proposal-export"></script>
+  <script type="module" src="studio-mvp.js?v=event-invitation"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -197,6 +197,14 @@
     </div>
     <section id="mailing-view" class="mailing-view" aria-labelledby="mailing-title" hidden>
       <div class="panel-head"><p class="eyebrow">La lettre / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez un récit publié ou un événement à venir. Le Studio vérifiera les abonnés confirmés, créera les campagnes Brevo et répartira jusqu’à 400 destinataires sur deux jours.</p></div>
+      <details class="mailing-card">
+        <summary>Modèles d’e-mails automatiques</summary>
+        <p>Maquettes à prévisualiser. Les déclencheurs et la livraison restent à vérifier.</p>
+        <label>Modèle <select id="mailing-automation-template"><option value="welcome">Bienvenue dans La lettre</option><option value="registration">Confirmation d’inscription à un événement</option><option value="unsubscribe">Confirmation de désinscription de La lettre</option></select></label>
+        <button id="mailing-automation-preview" type="button" class="button secondary">Prévisualiser le modèle</button>
+        <p id="mailing-automation-subject" role="status"></p>
+        <iframe id="mailing-automation-frame" title="Aperçu du modèle automatique" sandbox hidden width="100%" height="520"></iframe>
+      </details>
       <div id="mailing-connection" class="mailing-card">
         <h3>Connexion à Brevo</h3><p id="mailing-connection-status" class="hint" role="status">Vérification de la connexion…</p>
         <details id="mailing-setup" hidden><summary>Gérer la connexion Brevo</summary><p class="hint">Réglage administrateur. Renseignez une fois la clé API v3 réservée au Studio. La clé est chiffrée côté serveur.</p><label>Clé API v3 Brevo <input id="mailing-api-key" type="password" autocomplete="new-password" placeholder="Clé API v3"></label><button id="mailing-connect" type="button" class="button secondary">Vérifier et enregistrer</button></details>
@@ -205,7 +213,7 @@
       <div class="mailing-card">
         <div class="mailing-card-head"><h3>1. Publication</h3><button id="mailing-refresh" type="button" class="button secondary">Actualiser les publications</button></div>
         <label>Récit ou événement publié <select id="mailing-post"><option value="">Chargement des publications…</option></select></label>
-        <label id="mailing-purpose-field" hidden>Type d’envoi pour l’événement <select id="mailing-purpose"><option value="announcement">Annonce</option><option value="reminder">Rappel avant l’événement</option></select></label>
+        <label id="mailing-purpose-field" hidden>Type d’envoi pour l’événement <select id="mailing-purpose"><option value="invitation">Invitation à l’événement</option><option value="announcement">Annonce</option><option value="reminder">Rappel avant l’événement</option></select></label>
         <p id="mailing-post-note" class="hint" role="status"></p>
         <label>Objet de l’e-mail <input id="mailing-subject-input" type="text" maxlength="160" placeholder="À lire · …"></label>
         <label>Texte d’aperçu <input id="mailing-preheader-input" type="text" maxlength="220" placeholder="Une phrase visible dans la boîte de réception"></label>

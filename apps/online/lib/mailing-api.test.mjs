@@ -158,7 +158,7 @@ test('an event reminder has distinct preview content and a story cannot be remin
   const preview=await (await call('preview',{fetchImpl,method:'POST',body:input})).json();
   assert.match(preview.email.subject,/^Rappel/);
   assert.match(preview.email.html,/Rappel de l’événement/);
-  await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/rappel concerne uniquement/);
+  await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/invitations et rappels concernent uniquement/);
 });
 
 test('an editor schedules 400 approved contacts across two days, with shared history and an individual audit',async()=>{

@@ -1323,7 +1323,12 @@ async function mailingRefresh(){
     const result = await mailingJson('/api/mailing/content',{cache:'no-store',signal:AbortSignal.timeout(12000)});
     mailingPosts=result.posts||[];
     const select=$('mailing-post');select.replaceChildren(new Option('Choisir une publication',''));
-    for(const post of mailingPosts)select.add(new Option((post.type==='recit'?'Récit · ':'Événement · ')+post.title,String(post.id)));
+    for(const [type,label] of [['evenement','Événements à venir'],['recit','Récits']]){
+      const group=document.createElement('optgroup');
+      group.label=label;
+      for(const post of mailingPosts.filter(item=>item.type===type))group.append(new Option(post.title,String(post.id)));
+      if(group.children.length)select.append(group);
+    }
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(mailingStorageKey) || 'null'); } catch {}
     if (saved && mailingPosts.some(post => String(post.id) === saved.postId)) {
@@ -1331,7 +1336,7 @@ async function mailingRefresh(){
       $('mailing-intro').value = typeof saved.intro === 'string' ? saved.intro : '';
       $('mailing-subject-input').value = typeof saved.subject === 'string' ? saved.subject : '';
       $('mailing-preheader-input').value = typeof saved.previewText === 'string' ? saved.previewText : '';
-      $('mailing-purpose').value = saved.purpose === 'reminder' ? 'reminder' : 'announcement';
+      $('mailing-purpose').value = ['invitation','reminder'].includes(saved.purpose) ? saved.purpose : 'announcement';
     } else if (mailingPreview) {
       mailingInvalidate();
     }
@@ -1349,12 +1354,31 @@ function mailingShowJob(job){
 }
 $('tab-editor').addEventListener('click',()=>mailingTab('editor'));
 $('tab-mailing').addEventListener('click',()=>mailingTab('mailing'));
+$('mailing-automation-preview').addEventListener('click', async () => {
+  const button = $('mailing-automation-preview');
+  const subject = $('mailing-automation-subject');
+  const frame = $('mailing-automation-frame');
+  button.disabled = true;
+  frame.hidden = true;
+  subject.textContent = 'Chargement de l’aperçu…';
+  try {
+    const kind = $('mailing-automation-template').value;
+    const preview = await mailingJson('/api/mailing/automation-preview?kind=' + encodeURIComponent(kind));
+    subject.textContent = preview.subject;
+    frame.srcdoc = preview.html;
+    frame.hidden = false;
+  } catch (error) {
+    subject.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 $('mailing-refresh').addEventListener('click',mailingRefresh);
 $('mailing-recheck').addEventListener('click',refreshMailingConnection);
 $('mailing-post').addEventListener('change',()=>{
   mailingInvalidate();const post=mailingPosts.find(x=>x.id===Number($('mailing-post').value));
-  $('mailing-purpose').value='announcement';mailingPurposeVisibility();
-  $('mailing-intro').value=post?.intro||'';
+  $('mailing-purpose').value=post?.type==='evenement'?'invitation':'announcement';mailingPurposeVisibility();
+  $('mailing-intro').value=post?.intro||(post?.type==='evenement'?'Nous avons le plaisir de vous inviter à cette rencontre. Retrouvez les informations pratiques sur le site.':'');
   $('mailing-subject-input').value='';$('mailing-preheader-input').value='';
   saveMailingDraft();
   $('mailing-post-note').textContent=post?(post.type==='evenement'?`Événement du ${post.date}. L’envoi est réservé aux dates à venir.`:`Récit publié le ${new Date(post.publishedAt).toLocaleDateString('fr-FR')}.`):'Choisissez une publication.';

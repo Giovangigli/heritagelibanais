@@ -44,10 +44,11 @@ export function renderEventEmail(input) {
   if (!title || !input.intro || !input.date || !input.url) throw new TypeError('Title, introduction, date and event URL are required.');
   const url = httpsUrl(input.url, ''); if (!url) throw new TypeError('The event URL must use HTTPS.');
   const reminder = input.purpose === 'reminder';
+  const invitation = input.purpose === 'invitation';
   const previewText = String(input.previewText || `${input.date}${input.city ? ` · ${input.city}` : ''}`).trim();
   const details = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0 0">${row('Date', input.date)}${row('Horaire', input.time)}${row('Lieu', input.venue)}${row('Ville', input.city)}${row('Tarif', input.price)}</table>`;
   const body = image(input.imageUrl, input.imageAlt || title, input.imageCredit) + paragraph(input.intro) + details + button(input.registrationUrl ? 'S’inscrire' : 'Voir l’évènement', input.registrationUrl ? httpsUrl(input.registrationUrl, url) : url) + (input.practicalNote ? paragraph(input.practicalNote) : '');
-  return { subject: String(input.subject || `${reminder ? 'Rappel' : 'Rencontre'} · ${title} · ${input.date}`).trim(), previewText, html: shell(reminder ? 'Rappel de l’événement' : 'Nos rencontres', title, body, previewText) };
+  return { subject: String(input.subject || `${reminder ? 'Rappel' : invitation ? 'Invitation' : 'Rencontre'} · ${title} · ${input.date}`).trim(), previewText, html: shell(reminder ? 'Rappel de l’événement' : invitation ? 'Vous êtes invité' : 'Nos rencontres', title, body, previewText) };
 }
 
 export function renderWelcomeTemplate() {
@@ -56,4 +57,24 @@ export function renderWelcomeTemplate() {
   const event = `{% if params.EVENT_URL %}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:28px 0 0;border-top:1px solid #C7CEC3"><tr><td style="padding:20px 0 0"><p style="margin:0 0 7px;color:${COLORS.red};font:700 11px Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase">À venir</p><h2 style="margin:0 0 9px;color:${COLORS.ink};font:600 23px/1.2 Georgia,serif">{{ params.EVENT_TITLE }}</h2><p style="margin:0;color:${COLORS.ink};font:15px/1.5 Arial,sans-serif">{{ params.EVENT_DATE }}</p>${button('Voir l’évènement', '{{ params.EVENT_URL }}')}</td></tr></table>{% endif %}`;
   const body = paragraph('Merci d’avoir confirmé votre inscription à La lettre Héritage Libanais. Vous recevrez nos nouveaux récits et les annonces de rencontres.') + paragraph('Pour commencer, voici le récit le plus récent publié sur notre site.') + story + event;
   return {subject:'Bienvenue dans La lettre · Héritage Libanais',html:shell('Bienvenue', 'Une histoire à recevoir.', body, 'Votre inscription est confirmée. Découvrez notre dernier récit.')};
+}
+
+export function renderAutomationPreview(kind) {
+  if (kind === 'welcome') return {
+    subject: 'Bienvenue dans La lettre · Héritage Libanais',
+    html: shell('Bienvenue', 'Une histoire à recevoir.', paragraph('Merci d’avoir confirmé votre inscription à La lettre Héritage Libanais. Vous recevrez nos nouveaux récits et les annonces de rencontres.') + button('Découvrir les récits', SITE + '/recits/'), 'Votre inscription est confirmée.'),
+  };
+  if (kind === 'registration') return renderEventEmail({
+    title: 'Rencontre Héritage Libanais',
+    subject: 'Inscription confirmée · Rencontre Héritage Libanais',
+    intro: 'Votre place est réservée. Retrouvez ci-dessous les informations utiles pour votre venue.',
+    date: 'Date et heure de la rencontre',
+    venue: 'Lieu et adresse de la rencontre',
+    url: SITE + '/evenements/',
+  });
+  if (kind === 'unsubscribe') return {
+    subject: 'Désinscription confirmée · La lettre',
+    html: shell('La lettre', 'Votre désinscription est confirmée.', paragraph('Vous ne recevrez plus La lettre Héritage Libanais.'), 'Votre désinscription a été enregistrée.'),
+  };
+  throw new TypeError('Modèle inconnu.');
 }

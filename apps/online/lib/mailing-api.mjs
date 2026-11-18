@@ -1,5 +1,5 @@
 import {fetchPublishedContent} from './mailing-content.mjs';
-import {renderStoryEmail,renderEventEmail} from './brevo-email.mjs';
+import {renderStoryEmail,renderEventEmail,renderAutomationPreview} from './brevo-email.mjs';
 
 const BREVO='https://api.brevo.com/v3';
 const ORGANIZATION='6ae79b0ecddd8ac19c05da12';
@@ -90,7 +90,7 @@ async function resolvedEmail(input,fetchImpl){
   const post=(await fetchPublishedContent(fetchImpl)).find(item=>item.id===input.postId);
   if(!post)throw failure('Cette publication n’est pas disponible pour un envoi.');
   const purpose=input.purpose||'announcement';
-  if(!['announcement','reminder'].includes(purpose)||purpose==='reminder'&&post.type!=='evenement')throw failure('Un rappel concerne uniquement un événement à venir.');
+  if(!['announcement','reminder','invitation'].includes(purpose)||(purpose!=='announcement'&&post.type!=='evenement'))throw failure('Les invitations et rappels concernent uniquement les événements à venir.');
   const common={title:post.title,intro:input.intro.trim(),url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt,subject:input.subject?.trim(),previewText:input.previewText?.trim()};
   const email=post.type==='evenement'?renderEventEmail({...common,date:post.date,purpose}):renderStoryEmail(common);
   return {post,email,purpose};
@@ -106,6 +106,11 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
   const connectionManaged=Boolean(serverKey);
   const connectionKey=()=>serverKey||storedKey(db,env,workspaceUserId,decryptToken);
   if(path==='/api/mailing/content'&&request.method==='GET')return json({posts:await fetchPublishedContent(fetchImpl)});
+  if(path==='/api/mailing/automation-preview'&&request.method==='GET'){
+    const kind=new URL(request.url).searchParams.get('kind');
+    if(!['welcome','registration','unsubscribe'].includes(kind))throw failure('Modèle inconnu.');
+    return json(renderAutomationPreview(kind));
+  }
   if(path==='/api/mailing/status'&&request.method==='GET'){
     let connected=false;
     const checked=(status,reason,fields={})=>json({
@@ -191,7 +196,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
           if(added?.contacts?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
         }
         part.status='list_ready';await saveJob(db,job);
-        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':'La lettre'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
+        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':purpose==='invitation'?'Invitation':'La lettre'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
         if(!Number.isSafeInteger(campaign?.id))throw failure('La campagne Brevo n’a pas été créée.',502);
         part.campaignId=campaign.id;part.status='campaign_created';await saveJob(db,job);
         let detail=await brevo(key,`/emailCampaigns/${campaign.id}?excludeHtmlContent=true`,{fetchImpl});
