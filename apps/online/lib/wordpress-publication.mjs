@@ -110,6 +110,10 @@ async function uploadMedia(connection, image, fetchImpl) {
   return {id:payload.id,url:payload.source_url,alt:image.alt,credit:image.credit};
 }
 
+export async function uploadWordPressMedia(connection,image,fetchImpl=fetch){
+  return uploadMedia(connection,image,fetchImpl);
+}
+
 export async function publishWordPressPost(connection, proposal, slug, fetchImpl = fetch, media = []) {
   const {api}=wordpressAccess(connection);
   const search = new URL(`${api}/posts`);
