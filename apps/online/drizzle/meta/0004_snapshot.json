@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ee3fcca8-3a7a-4602-9336-723fd4b9f224",
+  "id": "9cc0a6d2-20b3-4d0a-a270-168600450e77",
   "prevId": "c1f36263-5ba4-4c67-ba44-bf624dc52212",
   "tables": {
     "studio_connections": {
@@ -217,13 +217,13 @@
           ],
           "isUnique": true
         },
-        "studio_instagram_jobs_post": {
-          "name": "studio_instagram_jobs_post",
+        "studio_instagram_jobs_user_post": {
+          "name": "studio_instagram_jobs_user_post",
           "columns": [
             "user_id",
             "post_id"
           ],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {},

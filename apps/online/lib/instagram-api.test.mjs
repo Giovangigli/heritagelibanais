@@ -7,7 +7,7 @@ import {encryptToken,decryptToken} from './studio-api.mjs';
 
 function setup(){
   const sql=new DatabaseSync(':memory:');
-  for(const name of ['0000_productive_mister_fear','0001_past_gressill','0002_empty_victor_mancha','0004_quiet_silvermane'])sql.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
+  for(const name of ['0000_productive_mister_fear','0001_past_gressill','0002_empty_victor_mancha','0004_glossy_crystal'])sql.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
   const db={prepare(query){return {bind(...args){return {
     first:async()=>sql.prepare(query).get(...args)||null,
     all:async()=>({results:sql.prepare(query).all(...args)}),
@@ -91,5 +91,7 @@ test('carousel uploads verified JPEGs, publishes children then parent once, and 
   assert.equal(calls.filter(call=>call==='POST /v27.0/12345/media_publish').length,1);
   const repeated=await handleInstagramRequest('/api/instagram/publish',request('/api/instagram/publish','POST',body),ctx.env,{...ctx,fetchImpl:wrappedFetch});
   assert.equal((await repeated.json()).job.mediaId,'900');
+  assert.equal(calls.filter(call=>call==='POST /v27.0/12345/media_publish').length,1);
+  await assert.rejects(()=>handleInstagramRequest('/api/instagram/publish',request('/api/instagram/publish','POST',{...body,requestId:crypto.randomUUID()}),ctx.env,{...ctx,fetchImpl:wrappedFetch}),/existe déjà/);
   assert.equal(calls.filter(call=>call==='POST /v27.0/12345/media_publish').length,1);
 });

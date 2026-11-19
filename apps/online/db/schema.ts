@@ -1,4 +1,4 @@
-import {sqliteTable,text,integer,uniqueIndex,index} from 'drizzle-orm/sqlite-core';
+import {sqliteTable,text,integer,uniqueIndex} from 'drizzle-orm/sqlite-core';
 export const connections=sqliteTable('studio_connections',{
   userId:text('user_id').primaryKey(),
   encryptedToken:text('encrypted_token').notNull(),
@@ -59,4 +59,4 @@ export const instagramJobs = sqliteTable('studio_instagram_jobs', {
   stateJson:text('state_json').notNull(),
   createdAt:text('created_at').notNull(),
   updatedAt:text('updated_at').notNull(),
-},table=>[index('studio_instagram_jobs_post').on(table.userId,table.postId)]);
+},table=>[uniqueIndex('studio_instagram_jobs_user_post').on(table.userId,table.postId)]);

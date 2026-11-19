@@ -19,4 +19,4 @@ CREATE TABLE `studio_instagram_jobs` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `studio_instagram_jobs_request_id_unique` ON `studio_instagram_jobs` (`request_id`);--> statement-breakpoint
-CREATE INDEX `studio_instagram_jobs_post` ON `studio_instagram_jobs` (`user_id`,`post_id`);
+CREATE UNIQUE INDEX `studio_instagram_jobs_user_post` ON `studio_instagram_jobs` (`user_id`,`post_id`);

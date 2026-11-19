@@ -110,8 +110,8 @@ export async function handleInstagramRequest(path,request,env,{db,access,bodyJso
     if(input?.confirmed!==true||!Number.isSafeInteger(input.postId)||!Array.isArray(input.assetIds)||input.assetIds.length<2||input.assetIds.length>10||new Set(input.assetIds).size!==input.assetIds.length||input.assetIds.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))||typeof input.caption!=='string'||!input.caption.trim()||input.caption.length>2200||typeof input.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId))throw fail('Relisez les cartes et la légende, puis confirmez la publication.');
     const prior=await db.prepare('SELECT state_json FROM studio_instagram_jobs WHERE request_id = ? AND user_id = ?').bind(input.requestId,userId).first();
     if(prior)return json({job:JSON.parse(prior.state_json)});
-    const existing=await db.prepare("SELECT state_json FROM studio_instagram_jobs WHERE user_id = ? AND post_id = ? AND status != 'failed' ORDER BY created_at DESC LIMIT 1").bind(userId,input.postId).first();
-    if(existing)throw fail('Un envoi de ce récit existe déjà. Vérifiez son état avant de recommencer.',409);
+    const existing=await db.prepare('SELECT id,status FROM studio_instagram_jobs WHERE user_id = ? AND post_id = ?').bind(userId,input.postId).first();
+    if(existing&&existing.status!=='failed')throw fail('Un envoi de ce récit existe déjà. Vérifiez son état avant de recommencer.',409);
     const post=await story(input.postId,fetchImpl);
     const assets=[];
     for(const id of input.assetIds){
@@ -123,8 +123,14 @@ export async function handleInstagramRequest(path,request,env,{db,access,bodyJso
     if(!saved)throw fail('Connectez Instagram avant de publier.',409);
     const account=await profile(saved.token,fetchImpl);
     if((saved.id&&saved.id!==account.id)||(saved.expectedUsername&&saved.expectedUsername.toLowerCase()!==account.username.toLowerCase()))throw fail('Le compte Instagram connecté a changé. Vérifiez la connexion.',409);
-    const job={id:crypto.randomUUID(),requestId:input.requestId,postId:post.id,title:post.title,username:account.username,caption:input.caption.trim(),assetIds:input.assetIds,status:'preparing',createdAt:now(),childIds:[],containerId:null,mediaId:null,permalink:null};
-    await db.prepare('INSERT INTO studio_instagram_jobs (id,user_id,request_id,post_id,status,state_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').bind(job.id,userId,job.requestId,post.id,job.status,JSON.stringify(job),job.createdAt,job.createdAt).run();
+    const job={id:existing?.id||crypto.randomUUID(),requestId:input.requestId,postId:post.id,title:post.title,username:account.username,caption:input.caption.trim(),assetIds:input.assetIds,status:'preparing',createdAt:now(),childIds:[],containerId:null,mediaId:null,permalink:null};
+    if(existing){
+      const updated=await db.prepare("UPDATE studio_instagram_jobs SET request_id = ?,status = ?,state_json = ?,created_at = ?,updated_at = ? WHERE id = ? AND status = 'failed'").bind(job.requestId,job.status,JSON.stringify(job),job.createdAt,job.createdAt,job.id).run();
+      if(!updated.meta.changes)throw fail('Un autre envoi de ce récit est déjà en cours.',409);
+    }else{
+      try{await db.prepare('INSERT INTO studio_instagram_jobs (id,user_id,request_id,post_id,status,state_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').bind(job.id,userId,job.requestId,post.id,job.status,JSON.stringify(job),job.createdAt,job.createdAt).run();}
+      catch{throw fail('Un autre envoi de ce récit est déjà en cours.',409);}
+    }
     try{
       for(const asset of assets){
         const child=await graph(`/${account.id}/media`,saved.token,{method:'POST',params:{image_url:asset.url,is_carousel_item:'true'},fetchImpl});
