@@ -41,3 +41,22 @@ export const eventRegistrations = sqliteTable('studio_event_registrations', {
 }, table => [
   uniqueIndex('studio_event_registration_email').on(table.workspaceId, table.eventPostId, table.email),
 ]);
+
+export const instagramAssets = sqliteTable('studio_instagram_assets', {
+  id:text('id').primaryKey(),
+  userId:text('user_id').notNull(),
+  postId:integer('post_id').notNull(),
+  mediaId:integer('media_id').notNull(),
+  url:text('url').notNull(),
+  createdAt:text('created_at').notNull(),
+});
+export const instagramJobs = sqliteTable('studio_instagram_jobs', {
+  id:text('id').primaryKey(),
+  userId:text('user_id').notNull(),
+  requestId:text('request_id').notNull().unique(),
+  postId:integer('post_id').notNull(),
+  status:text('status').notNull(),
+  stateJson:text('state_json').notNull(),
+  createdAt:text('created_at').notNull(),
+  updatedAt:text('updated_at').notNull(),
+},table=>[uniqueIndex('studio_instagram_jobs_user_post').on(table.userId,table.postId)]);

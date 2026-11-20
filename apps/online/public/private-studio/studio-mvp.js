@@ -1,5 +1,6 @@
 import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
+import {renderInstagramJpeg} from './studio-instagram-render.mjs';
 
 const $ = (id) => document.getElementById(id);
 let studioAccess;
@@ -1362,31 +1363,130 @@ function mailingShowJob(job){
   if(job.error){const error=document.createElement('p');error.textContent=job.error;box.append(error);}
 }
 $('tab-editor').addEventListener('click',()=>mailingTab('editor'));
+let instagramConnected=false;
+let instagramPrepared=[];
+let instagramPreparedPostId=null;
+let instagramRequestId=null;
+const instagramJson=(path,options={})=>mailingJson(path,options);
+async function refreshConnectionsOverview(){
+  const entries=[['n8n','/api/status'],['brevo','/api/mailing/status'],['instagram','/api/instagram/status']];
+  await Promise.all(entries.map(async([name,path])=>{
+    const label=$('home-'+name+'-status');
+    try{
+      const result=await instagramJson(path,{cache:'no-store',signal:AbortSignal.timeout(12000)});
+      const ready=name==='brevo'?result.status==='ready':result.connected===true;
+      label.dataset.status=ready?'ready':result.status==='setup'||result.reason==='credentials_missing'?'setup':'unavailable';
+      label.textContent=ready?(name==='instagram'?'Connecté · @'+result.username:'Connecté'):label.dataset.status==='setup'?'À configurer':'À vérifier';
+    }catch{label.dataset.status='unavailable';label.textContent='Indisponible';}
+  }));
+}
+async function refreshInstagramConnection(){
+  const status=$('instagram-connection-status');status.textContent='Vérification de la connexion Meta…';
+  try{
+    const result=await instagramJson('/api/instagram/status',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    instagramConnected=result.connected===true;
+    $('instagram-setup').hidden=!studioAccess.canManageConnections||result.managed;
+    $('instagram-setup').open=!instagramConnected&&studioAccess.canManageConnections&&!result.managed;
+    status.textContent=instagramConnected?`Connecté à @${result.username}.`:result.reason==='missing'?'Connectez le compte Instagram professionnel pour publier.':result.reason==='account_mismatch'?'Le jeton pointe vers un autre compte Instagram.':'La connexion Meta doit être vérifiée.';
+  }catch{instagramConnected=false;status.textContent='La connexion Meta est momentanément indisponible.';}
+  $('instagram-publish').disabled=!instagramConnected||instagramPrepared.length<2;
+  void refreshConnectionsOverview();
+}
+function clearInstagramPreview(){
+  for(const item of instagramPrepared)URL.revokeObjectURL(item.previewUrl);
+  instagramPrepared=[];instagramPreparedPostId=null;instagramRequestId=null;
+  $('instagram-preview').replaceChildren();$('instagram-publish').disabled=true;
+}
+async function refreshInstagramStory(){
+  clearInstagramPreview();
+  const select=$('instagram-post'),status=$('instagram-status');
+  select.replaceChildren(new Option('Choisir un récit',''));
+  const postId=state.draft?.wordpressStatus==='publish'?state.draft.wordpressPostId:null;
+  if(!postId){status.textContent='Publiez d’abord un récit depuis l’atelier éditorial.';return;}
+  try{
+    const {posts}=await instagramJson('/api/mailing/content',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    const post=posts.find(item=>item.id===postId&&item.type==='recit');
+    if(!post){status.textContent='Le récit du dossier actuel ne figure plus parmi les publications du site.';return;}
+    const option=new Option(post.title,String(post.id));option.dataset.url=post.url;select.add(option);select.value=String(post.id);
+    $('instagram-source').href=post.url;$('instagram-source').hidden=false;
+    if(!$('instagram-caption').value.trim())$('instagram-caption').value=`${post.title}\n\nÀ lire sur heritage-libanais.fr : ${post.url}`;
+    status.textContent='Récit validé et publié. Préparez les cartes pour vérifier leur rendu.';
+  }catch(error){status.textContent=error.message;}
+}
+function showInstagramJob(job){
+  const box=$('instagram-job');box.hidden=false;box.replaceChildren();
+  const title=document.createElement('strong');title.textContent=job.status==='published'?'Carrousel publié':'Envoi à vérifier dans Instagram';box.append(title);
+  const line=document.createElement('p');line.textContent=`${job.title} · @${job.username} · ${job.status}`;box.append(line);
+  if(job.permalink){const link=document.createElement('a');link.href=job.permalink;link.target='_blank';link.rel='noopener';link.textContent='Voir sur Instagram';box.append(link);}
+  if(job.error){const message=document.createElement('p');message.textContent=job.error;box.append(message);}
+}
 $('tab-instagram').addEventListener('click',async()=>{
   mailingTab('instagram');
-  const select=$('instagram-post');
-  const previous=select.value;
-  const status=$('instagram-status');
-  status.textContent='Chargement des récits…';
-  try{
-    const {posts}=await mailingJson('/api/mailing/content');
-    select.replaceChildren(new Option('Choisir un récit',''));
-    for(const post of posts.filter(item=>item.type==='recit')){
-      const option=new Option(post.title,String(post.id));
-      option.dataset.url=post.url;
-      select.add(option);
-    }
-    if([...select.options].some(option=>option.value===previous))select.value=previous;
-    select.dispatchEvent(new Event('change'));
-    status.textContent=select.options.length>1?'':'Aucun récit publié.';
-  }catch(error){status.textContent=error.message;}
+  await Promise.all([refreshInstagramConnection(),refreshInstagramStory()]);
+  try{const {jobs}=await instagramJson('/api/instagram/jobs');if(jobs.length)showInstagramJob(jobs[0]);}catch{}
 });
 $('instagram-post').addEventListener('change',()=>{
+  clearInstagramPreview();
   const url=$('instagram-post').selectedOptions[0]?.dataset.url;
-  const link=$('instagram-source');
-  link.hidden=!url;
-  if(url)link.href=url;
+  $('instagram-source').hidden=!url;if(url)$('instagram-source').href=url;
 });
+$('instagram-connect').addEventListener('click',async()=>{
+  const button=$('instagram-connect');button.disabled=true;
+  try{
+    const result=await instagramJson('/api/instagram/setup',{method:'POST',body:JSON.stringify({username:$('instagram-username').value,token:$('instagram-token').value})});
+    $('instagram-token').value='';$('instagram-username').value=result.username;
+    await refreshInstagramConnection();
+  }catch(error){$('instagram-connection-status').textContent=error.message;}
+  finally{button.disabled=false;}
+});
+$('instagram-recheck').addEventListener('click',refreshInstagramConnection);
+$('instagram-prepare').addEventListener('click',async()=>{
+  const button=$('instagram-prepare');button.disabled=true;clearInstagramPreview();
+  const status=$('instagram-status');
+  try{
+    const postId=Number($('instagram-post').value);
+    const version=state.proposals.find(entry=>entry.number===state.draft?.version)||state.proposals.at(-1);
+    const comp=version?.output?.composition;
+    if(!postId||postId!==state.draft?.wordpressPostId||state.draft?.wordpressStatus!=='publish'||comp?.type!=='recit')throw new Error('Ouvrez un récit validé et publié dans l’atelier.');
+    if(!Array.isArray(comp.cartes)||comp.cartes.length<2||comp.cartes.length>10)throw new Error('Le carrousel doit contenir de 2 à 10 cartes.');
+    for(const [index,card] of comp.cartes.entries()){
+      status.textContent=`Création du JPEG ${index+1}/${comp.cartes.length}…`;
+      const blob=await renderInstagramJpeg(frame=>renderCardFrame(frame,comp,card,index));
+      if(blob.size>8_000_000)throw new Error(`La carte ${index+1} dépasse 8 Mo. Réduisez ses images.`);
+      const previewUrl=URL.createObjectURL(blob);
+      instagramPrepared.push({blob,previewUrl,id:null});
+      const figure=document.createElement('figure');const image=document.createElement('img');image.src=previewUrl;image.alt=`Carte ${index+1} du carrousel`;const caption=document.createElement('figcaption');caption.textContent=`Carte ${index+1}`;figure.append(image,caption);$('instagram-preview').append(figure);
+    }
+    instagramPreparedPostId=postId;instagramRequestId=crypto.randomUUID();
+    status.textContent=`${instagramPrepared.length} cartes prêtes. Relisez chaque image et la légende.`;
+    $('instagram-publish').disabled=!instagramConnected;
+  }catch(error){status.textContent=error.message;clearInstagramPreview();}
+  finally{button.disabled=false;}
+});
+$('instagram-publish').addEventListener('click',async()=>{
+  const status=$('instagram-publish-status'),button=$('instagram-publish');
+  if(!instagramConnected||instagramPrepared.length<2||!$('instagram-confirm').checked){status.textContent='Relisez les cartes et cochez la confirmation avant de publier.';return;}
+  const caption=$('instagram-caption').value.trim();if(!caption){status.textContent='Ajoutez une légende Instagram.';return;}
+  button.disabled=true;
+  try{
+    for(const [index,item] of instagramPrepared.entries()){
+      if(item.id)continue;
+      status.textContent=`Transfert de la carte ${index+1}/${instagramPrepared.length} vers WordPress…`;
+      const response=await fetch(`/api/instagram/asset?postId=${instagramPreparedPostId}&position=${index+1}`,{method:'POST',headers:{'Content-Type':'image/jpeg'},body:item.blob,signal:AbortSignal.timeout(45000)});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'Le transfert a échoué.');
+      item.id=result.asset.id;
+    }
+    status.textContent='Publication du carrousel par Meta…';
+    const {job}=await instagramJson('/api/instagram/publish',{method:'POST',body:JSON.stringify({postId:instagramPreparedPostId,assetIds:instagramPrepared.map(item=>item.id),caption,confirmed:true,requestId:instagramRequestId}),signal:AbortSignal.timeout(120000)});
+    showInstagramJob(job);status.textContent=job.status==='published'?'Le carrousel est en ligne sur Instagram.':'Vérifiez le résultat sur Instagram avant tout nouvel essai.';
+    if(job.status==='published')clearInstagramPreview();
+  }catch(error){status.textContent=error.message+' Vérifiez l’historique ci-dessous avant de recommencer.';
+    try{const {jobs}=await instagramJson('/api/instagram/jobs');const job=jobs.find(item=>item.requestId===instagramRequestId);if(job){showInstagramJob(job);if(job.status!=='failed')return;instagramRequestId=crypto.randomUUID();}}catch{}
+    button.disabled=false;
+  }
+});
+$('home-brevo-link').addEventListener('click',event=>{event.preventDefault();$('tab-mailing').click();});
+$('home-instagram-link').addEventListener('click',event=>{event.preventDefault();$('tab-instagram').click();});
 $('tab-mailing').addEventListener('click',()=>mailingTab('mailing'));
 $('mailing-automation-preview').addEventListener('click', async () => {
   const button = $('mailing-automation-preview');
@@ -1466,6 +1566,7 @@ try {
   feedback('L’aperçu enregistré n’a pas pu s’afficher. Vous pouvez modifier la saisie et générer un aperçu.', true, 'compose-feedback');
 }
 refreshBridgeStatus();
+void refreshConnectionsOverview();
 refreshWordPressConnection();
 refreshPublicationList();
 window.addEventListener('focus',()=>refreshBridgeStatus());

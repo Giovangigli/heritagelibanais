@@ -3,6 +3,7 @@ import {validPayload,findDraft} from './bridge-contract.mjs';
 import {renderStoryEmail,renderEventEmail} from './brevo-email.mjs';
 import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
+import {handleInstagramRequest} from './instagram-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
 import {validate} from '../public/private-studio/studio-model.mjs';
 import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
@@ -223,6 +224,10 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
     }
     if(path.startsWith('/api/mailing/')){
       const result=await handleMailingRequest(path,request,env,user,{db:database(env),bodyJson,encryptToken,decryptToken,fetchImpl,access});
+      if(result)return result;
+    }
+    if(path.startsWith('/api/instagram/')){
+      const result=await handleInstagramRequest(path,request,env,{db:database(env),access,bodyJson,boundedBody,encryptToken,decryptToken,wordpressConnection,fetchImpl});
       if(result)return result;
     }
     if(path==='/api/status'&&request.method==='GET')return n8nStatus(env,access,fetchImpl);

@@ -7,7 +7,7 @@
   <title>Studio privé · Héritage Libanais</title>
   <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=instagram-tab"></script>
+  <script type="module" src="studio-mvp.js?v=instagram-carousel"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -21,6 +21,11 @@
       <p class="eyebrow">Atelier éditorial</p>
       <h1>Votre prochain contenu, <em>simplement.</em></h1>
       <p>Ajoutez votre texte et vos visuels, générez l’aperçu, puis relisez et publiez.</p>
+    </section>
+    <section class="connection-overview" aria-label="État des connexions">
+      <a href="/setup"><strong>n8n · Rédaction</strong><span id="home-n8n-status">Vérification…</span></a>
+      <a href="#mailing-view" id="home-brevo-link"><strong>Brevo · Mailing</strong><span id="home-brevo-status">Vérification…</span></a>
+      <a href="#instagram-view" id="home-instagram-link"><strong>Instagram · Meta</strong><span id="home-instagram-status">Vérification…</span></a>
     </section>
     <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
     <div id="editor-view">
@@ -196,13 +201,26 @@
     <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Une validation publie l’article sur WordPress.</p>
     </div>
     <section id="instagram-view" class="mailing-view" aria-labelledby="instagram-title" hidden>
-      <div class="panel-head"><h2 id="instagram-title">Instagram</h2></div>
+      <div class="panel-head"><h2 id="instagram-title">Instagram</h2><p>Préparez les cartes du récit publié, relisez le rendu et la légende, puis publiez sur le compte connecté.</p></div>
       <div class="mailing-card">
-        <h3>Carrousel</h3>
+        <h3>Connexion à Instagram</h3><p id="instagram-connection-status" class="hint" role="status">Vérification de la connexion…</p>
+        <details id="instagram-setup" hidden><summary>Gérer la connexion Meta</summary><p class="hint">Compte Instagram professionnel et jeton Instagram User avec les droits instagram_business_basic et instagram_business_content_publish. Le jeton reste chiffré côté serveur.</p><label>Nom du compte attendu <input id="instagram-username" autocomplete="off" placeholder="@heritagelibanais"></label><label>Jeton d’accès Instagram <input id="instagram-token" type="password" autocomplete="new-password" placeholder="Jeton Meta"></label><button id="instagram-connect" type="button" class="button secondary">Vérifier et enregistrer</button></details>
+        <button id="instagram-recheck" type="button" class="button secondary">Vérifier la connexion</button>
+      </div>
+      <div class="mailing-card">
+        <h3>Carrousel · 2 à 10 cartes</h3>
         <label>Récit en ligne <select id="instagram-post"><option value="">Choisir un récit</option></select></label>
         <p id="instagram-status" role="status"></p>
         <a id="instagram-source" target="_blank" rel="noopener" hidden>Voir le récit sur le site</a>
-        <p>La publication sera disponible après la préparation des images et la connexion du compte Instagram.</p>
+        <p class="hint">Les cartes sont exportées depuis la version validée dans l’atelier. Préparez d’abord un récit et publiez-le sur le site.</p>
+        <button id="instagram-prepare" type="button" class="button secondary">Préparer les cartes JPEG</button>
+        <div id="instagram-preview" class="instagram-preview" aria-label="Aperçu des cartes Instagram"></div>
+        <p class="hint">La préparation du transfert déposera ces JPEG dans la médiathèque publique WordPress pour que Meta puisse les récupérer.</p>
+        <label>Légende Instagram <textarea id="instagram-caption" rows="6" maxlength="2200" placeholder="Présentez le récit et ajoutez le lien vers le site."></textarea></label>
+        <label class="confirmation"><input id="instagram-confirm" type="checkbox"> J’ai relu toutes les cartes, la légende et le compte destinataire.</label>
+        <button id="instagram-publish" type="button" class="button primary" disabled>Publier sur Instagram</button>
+        <p id="instagram-publish-status" role="status"></p>
+        <div id="instagram-job" class="mailing-job" hidden></div>
       </div>
       <div class="mailing-card"><h3>Reel</h3><p>En préparation</p></div>
     </section>
