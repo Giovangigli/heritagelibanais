@@ -85,6 +85,15 @@ test('the site event page uses one image and the editor’s explicit registratio
   const preview=renderEventPage(proposal,images[0],{preview:true});
   assert.match(preview,/Confirmer mon inscription/);
   assert.doesNotMatch(preview,/\[hl_event_registration\]/);
+  const withIcon={...proposal,basis:{...proposal.basis,eventIcon:'cedar'}};
+  const iconPost=wordpressPostFromProposal(withIcon,'studio-123456789012345678901234',images);
+  assert.match(iconPost.content,/studio-event-icon-cedar/);
+  assert.match(iconPost.content,/\[hl_studio_event_icon name="cedar"\]/);
+  assert.equal(iconPost.featured_media,undefined);
+  assert.doesNotMatch(iconPost.content,/affiche\.png/);
+  const iconPreview=renderEventPage(withIcon,images[0],{preview:true});
+  assert.match(iconPreview,/pictogram-cedar\.svg/);
+  assert.equal((iconPreview.match(/<img /g)||[]).length,1);
   for(const mode of ['none','external']){
     event.registrationMode=mode;
     event.registrationUrl='https://example.org/places';

@@ -78,3 +78,5 @@
 }
 .studio-event-page .studio-event-button:hover { background: var(--event-red); border-color: var(--event-red); }
 .studio-event-page :focus-visible { outline: 3px solid var(--event-red); outline-offset: 2px; }
+.studio-event-page .studio-event-pictogram{display:grid;place-items:center;background:#dce8df;border-top:2px solid #b82f2b}
+.studio-event-page .studio-event-pictogram img{width:min(58%,220px);aspect-ratio:1;object-fit:contain;margin:24px 0}
