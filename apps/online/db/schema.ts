@@ -1,4 +1,4 @@
-import {sqliteTable,text,integer,uniqueIndex} from 'drizzle-orm/sqlite-core';
+import {sqliteTable,text,integer,uniqueIndex,primaryKey} from 'drizzle-orm/sqlite-core';
 export const connections=sqliteTable('studio_connections',{
   userId:text('user_id').primaryKey(),
   encryptedToken:text('encrypted_token').notNull(),
@@ -19,6 +19,14 @@ export const mailingJobs=sqliteTable('studio_mailing_jobs',{
   createdAt:text('created_at').notNull(),
   updatedAt:text('updated_at').notNull(),
 });
+export const brevoEventLists=sqliteTable('studio_brevo_event_lists',{
+  workspaceId:text('workspace_id').notNull(),
+  eventPostId:integer('event_post_id').notNull(),
+  listId:integer('list_id'),
+  importProcessId:integer('import_process_id'),
+  importAudienceHash:text('import_audience_hash'),
+  lockedUntil:integer('locked_until').notNull().default(0),
+},table=>[primaryKey({columns:[table.workspaceId,table.eventPostId]})]);
 export const wordpressPublications=sqliteTable('studio_wordpress_publications',{
   slug:text('slug').primaryKey(),
   userId:text('user_id').notNull(),
