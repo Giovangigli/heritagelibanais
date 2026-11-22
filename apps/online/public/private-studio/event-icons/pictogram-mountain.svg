@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Pictogramme des montagnes du Liban</title>
+  <desc id="desc">Deux sommets angulaires, une crête claire et un soleil rouge.</desc>
+  <circle cx="192" cy="61" r="24" fill="#EE2528"/>
+  <path d="M14 210 105 75l73 97 30-40 52 78Z" fill="#A6BAAA"/>
+  <path d="M14 210 105 75l30 40-28 25 17 17-24 53Z" fill="#789A88"/>
+  <path d="M2 210H254V226H2Z" fill="#064E38"/>
+</svg>

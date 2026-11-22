@@ -1,4 +1,5 @@
 import {eventDateTime, renderEventPage} from '../public/private-studio/studio-event-page.mjs';
+import {eventIcon} from '../public/private-studio/studio-model.mjs';
 export {eventDateTime};
 
 const SITE = 'heritage-libanais.fr';
@@ -47,7 +48,7 @@ export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
     title: proposal.output.title.trim(),
     excerpt: String(proposal.output.summary || '').trim(),
     content: proposal.output.siteEvent ? renderEventPage(proposal, uploadedMedia[0]) : renderedContent(proposal, uploadedMedia),
-    ...(uploadedMedia[0] ? {featured_media:uploadedMedia[0].id} : {}),
+    ...(uploadedMedia[0] && !(proposal.output.siteEvent && eventIcon(proposal.basis)) ? {featured_media:uploadedMedia[0].id} : {}),
     slug,
     status: 'publish',
   };

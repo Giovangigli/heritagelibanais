@@ -1,5 +1,5 @@
-import {renderEventPage} from './studio-event-page.mjs';
-import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
+import {renderEventPage, eventIconPreviewUrl} from './studio-event-page.mjs';
+import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
 
@@ -38,6 +38,9 @@ $('mailing-confirmation').hidden = !studioAccess.canScheduleMailing;
 $('mailing-send').hidden = !studioAccess.canScheduleMailing;
 const newMediaId = () => globalThis.crypto?.randomUUID?.() || 'media-' + Date.now() + '-' + Math.random().toString(36).slice(2);
 const form = $('dossier-form');
+const visual = $('event-visual');
+for (const [key, label] of Object.entries(EVENT_ICONS)) visual.add(new Option(label, key));
+let eventPhotoId = null;
 const dossierFields = ['title', 'sourceText', 'sources', 'theme'];
 const templateLabels = {
   couverture: 'Couverture · titre',
@@ -81,6 +84,7 @@ try {
     localStorage.setItem(storageKey + '-revision', String(cloudRevision));
   }
 } catch (error) { $('cloud-save-status').textContent = error.message; }
+state = separateDossiers(state);
 let media = structuredClone(state.dossier.media || []);
 const mediaUrls = new Map();
 const rightsUrls = new Map();
@@ -89,6 +93,8 @@ let selectedVersion = state.manualDraft?.fromVersion ?? state.proposals.at(-1)?.
 let slideIndex = 0;
 const session = createStudioSession();
 let resetSnapshot = null;
+let publishing = false;
+const workspaceMedia = new Map();
 
 async function refreshWordPressConnection(){
   const status=$('wordpress-connection-status');
@@ -179,7 +185,7 @@ function resetDossier() {
     correction: $('correction-request').value,
   };
   session.invalidate();
-  state = emptyState(); media = []; selectedVersion = 0; slideIndex = 0;
+  state = {...emptyState(contentType(state.dossier)),otherDossier:state.otherDossier}; media = []; selectedVersion = 0; slideIndex = 0;
   mediaFiles.clear(); mediaPreviews.clear(); mediaUrls.clear(); rightsUrls.clear(); openMediaDetails.clear();
   form.reset();
   $('final-confirmation').checked = false;
@@ -189,7 +195,7 @@ function resetDossier() {
   $('dossier-details').open = false;
   setForm(); updateGaps(); render(); syncGenerationControls();
   $('reset-notice').hidden = false;
-  feedback('Vous pouvez commencer un nouveau récit ou évènement.');
+  feedback('Le dossier de cet atelier est prêt.');
   form.elements.sourceText.focus();
 }
 function undoReset() {
@@ -207,6 +213,37 @@ function undoReset() {
   $('correction-request').value = previous.correction;
   $('reset-notice').hidden = true;
   feedback('Dossier précédent restauré avec ses images et ses versions.');
+}
+
+function openEditorialWorkspace(type) {
+  if (publishing) return;
+  if (type !== contentType(state.dossier)) {
+    discardResetUndo();
+    session.invalidate();
+    const {otherDossier, ...outgoing} = state;
+    workspaceMedia.set(contentType(outgoing.dossier), {
+      files:new Map(mediaFiles), previews:new Map(mediaPreviews), urls:new Map(mediaUrls), rights:new Map(rightsUrls),
+    });
+    state = {...(otherDossier ?? emptyState(type)),otherDossier:outgoing};
+    const cached = workspaceMedia.get(type);
+    replaceMap(mediaFiles,cached?.files || []);
+    replaceMap(mediaPreviews,cached?.previews || []);
+    replaceMap(mediaUrls,cached?.urls || []);
+    replaceMap(rightsUrls,cached?.rights || []);
+    workspaceMedia.delete(type);
+    openMediaDetails.clear();
+    media = structuredClone(state.dossier.media || []);
+    selectedVersion = state.manualDraft?.fromVersion ?? state.proposals.at(-1)?.number ?? 0;
+    slideIndex = 0;
+    form.reset();
+    $('final-confirmation').checked = false;
+    $('correction-request').value = state.correctionRequest || '';
+    feedback('');
+    feedback('', false, 'compose-feedback');
+    setForm(); updateGaps(); render(); syncGenerationControls();
+    void restoreSavedMedia();
+  }
+  mailingTab(type === 'evenement' ? 'event' : 'editor');
 }
 
 function persist() {
@@ -314,8 +351,9 @@ function setForm() {
   for (const key of eventKeys) form.elements['event_' + key].value = key === 'speakers' ? (state.dossier.event?.speakers || []).join('\n') : state.dossier.event?.[key] || '';
   form.elements.event_registrationMode.value = state.dossier.event?.registrationMode || (state.dossier.event?.registrationUrl ? 'external' : 'none');
   form.elements.usePhotos.checked = state.dossier.storyUsesPhotos ?? state.dossier.mediaMode === 'photos';
+  eventPhotoId = state.dossier.eventImageId ?? publicationMedia(state.dossier)[0]?.id ?? null;
+  visual.value = eventIcon(state.dossier) || (state.dossier.eventVisualMode ?? (eventPhotoId ? 'photo' : ''));
   updateContentType();
-  $('media-section').hidden = media.length === 0;
   renderMedia();
 }
 function readDossier() {
@@ -327,8 +365,10 @@ function readDossier() {
   dossier.storyUsesPhotos = form.elements.usePhotos.checked;
   if (dossier.contentType === 'evenement') {
     dossier.theme = 'Événement';
-    dossier.eventImageId = $('event-image').value || null;
-    dossier.mediaMode = dossier.eventImageId ? 'photos' : 'none';
+    dossier.eventImageId = eventPhotoId;
+    dossier.eventIcon = eventIcon({eventIcon:visual.value});
+    dossier.eventVisualMode = visual.value;
+    dossier.mediaMode = visual.value === 'photo' && eventPhotoId ? 'photos' : 'none';
   } else {
     dossier.mediaMode = media.length && dossier.storyUsesPhotos ? 'photos' : 'none';
   }
@@ -341,7 +381,12 @@ function updateContentType() {
   for (const field of $('event-fields').querySelectorAll('input, textarea, select')) field.disabled = !isEvent;
   updateRegistrationField();
   $('story-photos-field').hidden = isEvent;
-  $('event-image-field').hidden = !isEvent;
+  $('event-visual-field').hidden = !isEvent;
+  $('story-version-bar').hidden = isEvent;
+  $('dossier-preview-button').textContent = isEvent ? 'Prévisualiser la page' : 'Générer l’aperçu';
+  $('drop-zone').querySelector('strong').textContent = isEvent ? 'Glissez une image ici' : 'Glissez les images ici';
+  $('drop-zone').querySelector('span').textContent = isEvent ? 'ou choisissez un fichier' : 'ou cliquez pour choisir une ou plusieurs images';
+  $('drop-zone').setAttribute('aria-label',isEvent?'Choisir l’image de l’événement':'Glisser des images ou choisir des fichiers');
   $('media-files').multiple = !isEvent;
   $('media-files').accept = isEvent ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,image/svg+xml,.svg';
   $('intake-status').hidden = isEvent;
@@ -351,12 +396,12 @@ function updateContentType() {
   $('story-title-help').hidden = isEvent;
   form.elements.title.placeholder = isEvent ? 'Conférence, rencontre, exposition…' : 'Le titre exact de la couverture';
   $('dossier-title').textContent = isEvent ? 'Nouvel évènement' : 'Nouveau récit';
-  $('dossier-intro').textContent = isEvent ? 'Ajoutez une affiche, un programme ou les informations pratiques.' : 'Collez le texte relu de votre récit. Ajoutez des images si vous en avez.';
+  $('dossier-intro').textContent = isEvent ? 'Modifiez la description, les informations pratiques et le visuel dans ce formulaire.' : 'Collez le texte relu de votre récit. Ajoutez des images si vous en avez.';
   $('source-text-label').textContent = isEvent ? 'Texte ou programme de l’évènement' : 'Texte du récit';
   $('source-text-help').textContent = isEvent ? 'Vous pouvez aussi renseigner les informations pratiques ci-dessous.' : 'Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.';
   form.elements.sourceText.placeholder = isEvent ? 'Collez le programme, la description ou le texte de l’affiche.' : 'Collez votre récit ici.';
   if (form.elements.theme.value === '') form.elements.theme.value = 'Récit';
-  updateEventImageOptions();
+  updateEventVisual();
   renderWorkflow();
   updatePreviewVisibility();
 }
@@ -365,25 +410,30 @@ function updateRegistrationField() {
   $('event-external-field').hidden = !external;
   form.elements.event_registrationUrl.disabled = !external;
 }
-function updateEventImageOptions(selected = state.dossier.eventImageId) {
-  const field = $('event-image');
-  const eligible = media.filter(item => item.admis !== false && !/\.svg$/i.test(item.name));
-  const options = eligible.map(item => new Option(item.name, item.id));
-  field.replaceChildren(new Option('Sans image', ''), ...options);
-  field.value = selected === undefined ? eligible[0]?.id || '' : options.some(option => option.value === selected) ? selected : '';
+function updateEventVisual() {
+  const isEvent = form.elements.contentType.value === 'evenement';
+  const icon = isEvent && eventIcon({eventIcon:visual.value});
+  const iconPreview = $('event-icon-preview');
+  iconPreview.hidden = !icon;
+  if (icon) iconPreview.src = eventIconPreviewUrl(icon);
+  $('drop-zone').hidden = isEvent && visual.value !== 'photo';
+  $('media-count').hidden = isEvent && visual.value !== 'photo';
 }
 function updatePreviewVisibility() {
   const waitingForEvent = form.elements.contentType.value === 'evenement' &&
-    currentProposal()?.basis?.contentType !== 'evenement';
-  $('studio-output').hidden = waitingForEvent;
+    currentProposal()?.output?.siteEvent !== true;
+  $('studio-output').hidden = waitingForEvent && !state.draft;
+  $('studio-review').hidden = waitingForEvent;
   $('studio-workspace').classList.toggle('event-workspace', waitingForEvent || currentProposal()?.output?.siteEvent === true);
 }
-function renderMedia(selected) {
-  updateEventImageOptions(selected);
+function renderMedia() {
+  const visible = form.elements.contentType.value === 'evenement'
+    ? media.filter(item => visual.value === 'photo' && item.id === eventPhotoId)
+    : media;
   const list = $('media-list');
   list.replaceChildren();
-  $('media-section').hidden = media.length === 0;
-  media.forEach((item) => {
+  $('media-section').hidden = visible.length === 0;
+  visible.forEach((item) => {
     const row = document.createElement('div'); row.className = 'media-item';
     const thumb = document.createElement('div'); thumb.className = 'media-thumb';
     if (mediaUrls.has(item.id)) {
@@ -438,6 +488,7 @@ function renderMedia(selected) {
       mediaUrls.delete(item.id); rightsUrls.delete(item.id);
       mediaFiles.delete(item.id); mediaPreviews.delete(item.id);
       openMediaDetails.delete(item.id);
+      if (eventPhotoId === item.id) eventPhotoId = null;
       media = media.filter((entry) => entry.id !== item.id); renderMedia(); updateGaps();
       if (state.proposals.length) render();
     });
@@ -462,13 +513,20 @@ function updateGaps() {
   const dossier = readDossier();
   state.dossier = structuredClone(dossier);
   persist();
-  if (dossier.contentType === 'evenement' && media.length) {
-    $('media-count').textContent = 'Toutes les images restent dans le dossier. Choisissez celle qui apparaîtra sur la page de l’événement.';
+  if (dossier.contentType === 'evenement') {
+    $('media-count').textContent = eventPhotoId ? 'Ajouter un fichier remplace l’image de cet événement.' : 'Choisissez une image.';
+    if (currentProposal()?.output?.siteEvent) {
+      if (eventPreviewOutdated(currentProposal())) $('final-confirmation').checked = false;
+      updateProposalGaps(currentProposal());
+    }
     return;
   }
   $('media-count').textContent = media.length
     ? media.length + ' image' + (media.length > 1 ? 's' : '') + ' déposée' + (media.length > 1 ? 's' : '') + (dossier.mediaMode === 'photos' ? (media.length > 1 ? ', disponibles pour la proposition visuelle. ' : ', disponible pour la proposition visuelle. ') : ', non retenue' + (media.length > 1 ? 's' : '') + ' pour la proposition. ') + 'Crédits et droits facultatifs sous chaque photo.'
     : 'Aucune image déposée. Les fichiers ne sont pas envoyés.';
+}
+function eventPreviewOutdated(entry) {
+  return entry.output.siteEvent && !eventPreviewMatches(entry.basis,state.dossier);
 }
 function currentProposal() { return state.proposals.find((entry) => entry.number === selectedVersion) || state.proposals.at(-1); }
 function canonicalOutput(entry = currentProposal()) {
@@ -583,13 +641,14 @@ function updateProposalGaps(entry) {
     ? publicationMedia(entry.basis).some(item => !mediaUrls.has(item.id))
     : proposalSlides(entry).some(slide => slide.mediaItems.some(item => !mediaUrls.has(item.id)));
   const note = $('validation-gaps');
-  note.textContent = versionGaps.length
+  const outdated = eventPreviewOutdated(entry);
+  note.textContent = outdated ? 'La saisie a changé. Actualisez l’aperçu avant de publier.' : versionGaps.length
     ? 'Informations manquantes dans cette proposition (' + versionGaps.join(', ') + '). Complétez-la avant de continuer.'
     : missingPhotos ? 'Rattachez les photos de cette version avant de publier.'
     : '';
   note.hidden = !note.textContent;
-  const blocked = Boolean(pendingRevision()) || versionGaps.length > 0 || missingPhotos;
-  $('validate').disabled = Boolean(session.active) || blocked;
+  const blocked = Boolean(pendingRevision()) || versionGaps.length > 0 || missingPhotos || outdated;
+  $('validate').disabled = publishing || Boolean(session.active) || blocked;
 }
 function readOutput() {
   return pendingRevision()?.output ?? canonicalOutput();
@@ -860,7 +919,7 @@ function render() {
     const siteEvent = displayed.output.siteEvent === true;
     $('review-title').textContent = siteEvent ? 'Aperçu sur le site' : 'Aperçu';
     $('review-help').textContent = siteEvent
-      ? 'Relisez la page de l’événement. Pour appliquer une modification de la saisie, générez un nouvel aperçu.'
+      ? 'Relisez la page de l’événement. Modifiez-la depuis la saisie.'
       : 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
     $('site-event-preview').hidden = !siteEvent;
     $('card-workbench').hidden = siteEvent;
@@ -919,9 +978,11 @@ function renderSiteEvent(entry) {
   // A data URL lets the sandbox display private images without granting it access to the Studio origin.
   const url = media && mediaPreviews.get(media.id)?.dataUrl;
   const figure = url ? {url, alt:media.alt, credit:media.credit} : null;
-  const css = new URL('./event-page.css?v=1', import.meta.url).href;
+  const css = new URL('./event-page.css?v=2', import.meta.url).href;
   const html = renderEventPage(entry, figure, {preview:true});
-  $('site-event-frame').srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${css}"><style>body{margin:0}</style>${html}</html>`;
+  const frame = $('site-event-frame');
+  const srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${css}"><style>body{margin:0}</style>${html}</html>`;
+  if (frame.srcdoc !== srcdoc) frame.srcdoc = srcdoc;
 }
 async function imageSource(file) {
   if (file.type !== 'image/svg+xml' && !/\.svg$/i.test(file.name)) {
@@ -1036,9 +1097,13 @@ function prepareSiteEvent(dossier) {
   const output = {title, summary, contentType:'evenement', siteEvent:true, event};
   renderEventPage({basis:dossier, output});
   const image = publicationMedia(dossier)[0];
+  if (dossier.eventVisualMode === 'photo' && !image) throw new Error('Importez une image ou choisissez un autre visuel.');
   if (image && !mediaUrls.has(image.id)) throw new Error('Rattachez « ' + image.name + ' » pour vérifier son rendu.');
   const prepared = act(() => createProposal(saveDossier(state, dossier), output), 'Aperçu du site prêt à relire.');
-  if (prepared) focusStep('review-title');
+  if (prepared) {
+    $('final-confirmation').checked = false;
+    focusStep('review-title');
+  }
 }
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -1048,7 +1113,7 @@ form.addEventListener('submit', async (event) => {
     dossier.contentType === 'evenement' ? 'Ajoutez un programme, une affiche ou les informations de l’évènement.' : 'Ajoutez le texte du récit avant de lancer la composition.',
     true,
   );
-  if (pendingRevision()) {
+  if (dossier.contentType !== 'evenement' && pendingRevision()) {
     if ($('studio-output').hidden) return showComposeFeedback('Revenez au récit pour valider ou annuler sa retouche en cours.', true);
     return focusStep('revision-notice');
   }
@@ -1094,13 +1159,12 @@ form.addEventListener('submit', async (event) => {
     if (session.finish(job)) syncGenerationControls();
   }
 });
-form.addEventListener('input', () => { dossierEdited(); updateGaps(); state.dossier=structuredClone(readDossier()); persist(); });
+form.addEventListener('input', () => { dossierEdited(); updateGaps(); });
 form.addEventListener('change', (event) => {
   dossierEdited();
-  if (event.target.name === 'contentType') updateContentType();
+  if (event.target === visual) { updateEventVisual(); renderMedia(); }
   if (event.target.name === 'event_registrationMode') updateRegistrationField();
   updateGaps();
-  state.dossier=structuredClone(readDossier());persist();
 });
 $('media-files').addEventListener('change', (event) => {
   addFiles(event.target.files);
@@ -1110,17 +1174,16 @@ async function addFiles(files) {
   const epoch = session.epoch;
   dossierEdited();
   const isEvent = form.elements.contentType.value === 'evenement';
+  if (isEvent && visual.value !== 'photo') return;
   const accepted = ['image/png','image/jpeg','image/webp'];
   const valid = Array.from(files).filter(file => accepted.includes(file.type) || (!isEvent && (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name))));
-  let selected;
   for (const file of isEvent ? valid.slice(0,1) : valid) {
     let preview;
     try { preview = await imagePreviewData(file); }
     catch (error) { if (!session.isEpochCurrent(epoch)) return; feedback(error.message, true); continue; }
     if (!session.isEpochCurrent(epoch)) return;
-    const existing = media.find((item) => !mediaUrls.has(item.id) && item.name === file.name && (!item.size || item.size === file.size));
+    const existing = media.find((item) => (!isEvent || item.id === eventPhotoId) && !mediaUrls.has(item.id) && item.name === file.name && (!item.size || item.size === file.size));
     if (existing) {
-      if (isEvent) selected = existing.id;
       mediaUrls.set(existing.id, URL.createObjectURL(file));
       mediaFiles.set(existing.id, file);
       mediaPreviews.set(existing.id, preview);
@@ -1128,11 +1191,15 @@ async function addFiles(files) {
       continue;
     }
     const id = newMediaId();
-    if (isEvent) selected = id;
+    if (isEvent) {
+      media = media.filter(item => item.id !== eventPhotoId);
+      eventPhotoId = id;
+    }
     media.push({ id, name: file.name, size: file.size, credit: '', rights: 'à vérifier', rightsEvidence: '', rightsFileName: '' });
     mediaUrls.set(id, URL.createObjectURL(file));
     mediaFiles.set(id, file);
     mediaPreviews.set(id, preview);
+    if (isEvent) { renderMedia(); updateGaps(); }
     try { await uploadSavedMedia(id,file); } catch(error) { feedback(error.message,true); }
   }
   if (!session.isEpochCurrent(epoch)) return;
@@ -1140,8 +1207,7 @@ async function addFiles(files) {
     if (!isEvent) form.elements.usePhotos.checked = true;
     $('media-section').hidden = false;
   }
-  renderMedia(selected); updateGaps();
-  state.dossier=structuredClone(readDossier());persist();
+  renderMedia(); updateGaps();
   if (state.proposals.length) render();
 }
 const dropZone = $('drop-zone');
@@ -1261,6 +1327,9 @@ $('reset-dossier').addEventListener('click', resetDossier);
 $('undo-reset').addEventListener('click', undoReset);
 $('validate').addEventListener('click', async () => {
   if (!$('final-confirmation').checked) return feedback('Confirmez la relecture du texte et des visuels.', true);
+  if (publishing || (currentProposal() && eventPreviewOutdated(currentProposal()))) return;
+  publishing = true;
+  form.inert = true;
   const button=$('validate');button.disabled=true;feedback('Publication sur WordPress en cours…');
   try {
     clearTimeout(cloudSaveTimer);
@@ -1272,7 +1341,11 @@ $('validate').addEventListener('click', async () => {
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
     render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la Newsletter.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }
-  finally {button.disabled=false;}
+  finally {
+    publishing = false;
+    form.inert = false;
+    if (currentProposal()) updateProposalGaps(currentProposal());
+  }
 });
 $('wordpress-connect').addEventListener('click',async()=>{
   if(!studioAccess.canManageConnections)return;
@@ -1368,10 +1441,11 @@ try {
 } catch { /* A local draft is optional. */ }
 const mailingPost=()=>mailingPosts.find(post=>post.id===Number($('mailing-post').value));
 const mailingPurpose=()=>$('mailing-purpose').value;
+const mailingAudience=()=>$('mailing-audience-select').value;
 const mailingDraftKey=()=>$('mailing-post').value+':'+mailingPurpose();
 const mailingUsesExternal=()=>!$('mailing-external').hidden;
 function saveMailingDraft() {
-  selectedMailing={postId:$('mailing-post').value,purpose:mailingPurpose(),drafts:Object.fromEntries(mailingDrafts)};
+  selectedMailing={postId:$('mailing-post').value,purpose:mailingPurpose(),audience:mailingAudience(),drafts:Object.fromEntries(mailingDrafts)};
   try { localStorage.setItem(mailingStorageKey, JSON.stringify(selectedMailing)); }
   catch { /* The open draft remains editable. */ }
 }
@@ -1390,7 +1464,7 @@ function mailingInvalidate() {
   updateMailingSend();
 }
 function mailingInput() {
-  const input={postId:mailingPost().id,purpose:mailingPurpose()};
+  const input={postId:mailingPost().id,purpose:mailingPurpose(),audience:mailingAudience()};
   const draft=mailingDrafts.get(mailingDraftKey());
   for(const key of Object.keys(mailingFields)){
     if(draft?.[key])input[key]=draft[key];
@@ -1400,11 +1474,43 @@ function mailingInput() {
   }
   return input;
 }
-function loadMailingEditor() {
+function selectMailingAudience(preferred) {
+  const post=mailingPost();
+  const purpose=mailingPurpose();
+  const signup=post?.type==='evenement'&&post.registrationSource!=='none'&&Boolean(purpose);
+  const defaultAudience=purpose==='follow_up'?'newsletter_unregistered'
+    : ['confirmation','reminder','thanks'].includes(purpose)?'event_registrants':'newsletter';
+  const choices=signup&&defaultAudience==='newsletter'?['newsletter','newsletter_unregistered']:[defaultAudience];
+  const select=$('mailing-audience-select');
+  for(const option of select.options)option.disabled=!choices.includes(option.value);
+  select.value=choices.includes(preferred)?preferred:defaultAudience;
+  select.disabled=!post||!purpose||choices.length===1;
+}
+function updateMailingAudience() {
+  const post=mailingPost();
+  const selected=mailingAudience();
+  const immediate=selected==='newsletter_unregistered';
+  const external=post?.registrationSource==='external';
+  $('mailing-external').hidden=!external||selected==='newsletter';
+  $('mailing-event-list').hidden=!studioAccess.canScheduleMailing||
+    !['wordpress','studio','external'].includes(post?.registrationSource)||(external&&selected==='newsletter');
+  $('mailing-sync-status').textContent='La liste Brevo est réservée aux inscriptions à cet événement.';
+  $('mailing-sync-list').textContent='Synchroniser les inscrits dans Brevo';
+  $('mailing-quota-note').textContent=immediate
+    ? 'Envoi immédiat à 250 destinataires maximum, selon le quota Brevo disponible.'
+    : 'Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.';
+  $('mailing-send-title').textContent=immediate?'3. Envoyer maintenant':'3. Programmer l’envoi';
+  $('mailing-confirm-label').textContent=immediate
+    ? 'J’ai relu le contenu, le lien et les destinataires. Je veux envoyer ce mail maintenant.'
+    : 'J’ai relu le contenu, le lien et les destinataires. Je veux programmer cet envoi dans Brevo.';
+  $('mailing-send').textContent=immediate?'Revérifier et envoyer':'Programmer dans Brevo';
+}
+function loadMailingEditor(preferredAudience) {
   const post=mailingPost();
   const event=post?.type==='evenement';
   $('mailing-purpose-field').hidden=!event;
-  $('mailing-external').hidden=post?.registrationSource!=='external'||['invitation','announcement'].includes(mailingPurpose());
+  selectMailingAudience(preferredAudience);
+  updateMailingAudience();
   const external=externalRegistrations.get(post?.id);
   $('mailing-external-emails').value=external?.emails||'';
   $('mailing-external-complete').checked=Boolean(external?.complete);
@@ -1418,7 +1524,7 @@ function loadMailingEditor() {
     $(id).placeholder='';
   }
 }
-function selectMailingPost(purpose, intro) {
+function selectMailingPost(purpose, intro, preferredAudience) {
   const post=mailingPost();
   const noSignup=post?.registrationSource==='none';
   const options=[...$('mailing-purpose').options];
@@ -1441,7 +1547,7 @@ function selectMailingPost(purpose, intro) {
     const key=mailingDraftKey();
     mailingDrafts.set(key,{...mailingDrafts.get(key),intro});
   }
-  loadMailingEditor();
+  loadMailingEditor(preferredAudience);
   saveMailingDraft();
   $('mailing-post-note').textContent=post?.type==='evenement'?post.date:'';
   scheduleMailingPreview();
@@ -1477,10 +1583,10 @@ async function loadMailingPreview() {
       if(document.activeElement!==$(id))$(id).value=defaults[key];
     }
     const {audience}=result;
-    const label=mailingAudienceLabels[audience.kind];
+    const label=audience.name || mailingAudienceLabels[audience.kind];
     const count=audience.count===null?'':` · ${audience.count} destinataire(s)`;
-    const excluded=audience.kind==='newsletter_unregistered'&&audience.registeredCount!==null
-      ? ` · ${audience.registeredCount} inscription(s) vérifiée(s)` : '';
+    const excluded=audience.kind==='newsletter_unregistered'&&audience.excludedCount!==null
+      ? ` · ${audience.excludedCount} abonné(s) déjà inscrit(s) exclu(s)` : '';
     $('mailing-audience').textContent=label+count+excluded+(audience.problem?' — '+audience.problem:'');
     $('mailing-subject').textContent=result.email.subject;
     $('mailing-preheader').textContent=result.email.previewText;
@@ -1498,10 +1604,13 @@ async function loadMailingPreview() {
 }
 function mailingTab(name){
   const mailing=name==='mailing';
-  $('editor-intro').hidden=name!=='editor';
-  for(const section of ['editor','mailing','instagram']){
+  const editorial=name==='editor'||name==='event';
+  $('editor-intro').hidden=!editorial;
+  $('editor-view').hidden=!editorial;
+  $('mailing-view').hidden=!mailing;
+  $('instagram-view').hidden=name!=='instagram';
+  for(const section of ['editor','event','mailing','instagram']){
     const selected=name===section;
-    $(section+'-view').hidden=!selected;
     const tab=$('tab-'+section);
     tab.classList.toggle('active',selected);
     if(selected)tab.setAttribute('aria-current','page');else tab.removeAttribute('aria-current');
@@ -1511,7 +1620,7 @@ function mailingTab(name){
 async function mailingJson(path,options={}){
   const response=await fetch(path,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
   const result=await response.json();
-  if(!response.ok)throw Object.assign(new Error(result.error||result.job?.error||'Cette action est momentanément indisponible.'),{job:result.job});
+  if(!response.ok)throw Object.assign(new Error(result.error||result.job?.error||'Cette action est momentanément indisponible.'),{job:result.job,status:response.status});
   return result;
 }
 async function refreshMailingConnection(){
@@ -1573,7 +1682,7 @@ async function mailingRefresh({postId,intro}={}){
       if(group.children.length)select.append(group);
     }
     select.value=mailingPosts.some(post=>String(post.id)===preferred)?preferred:'';
-    selectMailingPost(postId?undefined:selectedMailing.purpose,intro);
+    selectMailingPost(postId?undefined:selectedMailing.purpose,intro,postId?undefined:selectedMailing.audience);
     if(!mailingPosts.length)$('mailing-post-note').textContent='Aucune publication disponible pour un envoi.';
     else if(postId&&!select.value)$('mailing-post-note').textContent='Cette publication n’apparaît pas encore dans WordPress.';
   }catch(error){
@@ -1582,12 +1691,13 @@ async function mailingRefresh({postId,intro}={}){
 }
 function mailingShowJob(job){
   const box=$('mailing-job');box.replaceChildren();box.hidden=false;
-  const title=document.createElement('strong');title.textContent=job.status==='scheduled'?'Envoi programmé dans Brevo':'Envoi à vérifier dans Brevo';box.append(title);
+  const title=document.createElement('strong');title.textContent=job.status==='submitted'?'Envoi déclenché dans Brevo':job.status==='scheduled'?'Envoi programmé dans Brevo':'Envoi à vérifier dans Brevo';box.append(title);
   const content=document.createElement('p');content.textContent=job.title||'';box.append(content);
-  for(const part of job.batches||[]){const line=document.createElement('p');line.textContent=`${part.count} destinataire(s) · ${new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'})}${part.campaignId?' · campagne Brevo '+part.campaignId:''}`;box.append(line);}
+  for(const part of job.batches||[]){const line=document.createElement('p');const date=part.scheduledAt?new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'}):'';line.textContent=[`${part.count} destinataire(s)`,date,part.campaignId?'campagne Brevo '+part.campaignId:''].filter(Boolean).join(' · ');box.append(line);}
   if(job.error){const error=document.createElement('p');error.textContent=job.error;box.append(error);}
 }
-$('tab-editor').addEventListener('click',()=>mailingTab('editor'));
+$('tab-editor').addEventListener('click',()=>openEditorialWorkspace('recit'));
+$('tab-event').addEventListener('click',()=>openEditorialWorkspace('evenement'));
 let instagramConnected=false;
 let instagramPrepared=[];
 let instagramPreparedPostId=null;
@@ -1747,6 +1857,31 @@ $('mailing-purpose').addEventListener('change',()=>{
   saveMailingDraft();
   scheduleMailingPreview();
 });
+$('mailing-audience-select').addEventListener('change',()=>{
+  updateMailingAudience();
+  saveMailingDraft();
+  scheduleMailingPreview();
+});
+$('mailing-sync-list').addEventListener('click',async()=>{
+  const post=mailingPost();
+  if(!post)return;
+  const input=mailingInput();
+  const button=$('mailing-sync-list');
+  const status=$('mailing-sync-status');
+  button.disabled=true;
+  status.textContent='Synchronisation de la liste Brevo…';
+  try{
+    const {listId,name,count,pending}=await mailingJson('/api/mailing/event-list',{method:'POST',body:JSON.stringify({
+      postId:post.id,externalRegistrations:input.externalRegistrations,
+    })});
+    if(mailingPost()?.id===post.id){
+      status.textContent=pending?`${name} · Synchronisation en cours dans Brevo.`:`${name} · ${count} inscrit(s) · Liste Brevo n° ${listId}.`;
+      button.textContent=pending?'Vérifier la synchronisation':'Synchroniser les inscrits dans Brevo';
+    }
+  }catch(error){
+    if(mailingPost()?.id===post.id)status.textContent=error.message;
+  }finally{button.disabled=false;}
+});
 for(const [key,id] of Object.entries(mailingFields))$(id).addEventListener('input',event=>{
   const draftKey=mailingDraftKey();
   mailingDrafts.set(draftKey,{...mailingDrafts.get(draftKey),[key]:event.target.value.trim()});
@@ -1784,20 +1919,20 @@ $('mailing-send').addEventListener('click',async()=>{
   if(!mailingCanSend||mailingSending||!preview||preview.audience.problem||!$('mailing-confirm').checked)return;
   mailingSending=true;
   updateMailingSend();
-  $('mailing-send-status').textContent='Programmation dans Brevo…';
+  $('mailing-send-status').textContent=preview.audience.kind==='newsletter_unregistered'
+    ? 'Nouvelle vérification des destinataires…' : 'Programmation dans Brevo…';
   try{
     const {job}=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({
       ...preview.input,contentHash:preview.contentHash,requestId:preview.requestId,confirmed:true,
     })});
     mailingShowJob(job);
-    $('mailing-send-status').textContent=job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
+    $('mailing-send-status').textContent=job.status==='submitted'?'Envoi déclenché dans Brevo.'
+      :job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
     if(mailingPreview===preview)mailingPreview=null;
   }catch(error){
     $('mailing-send-status').textContent=error.message;
-    if(error.job){
-      mailingShowJob(error.job);
-      if(mailingPreview===preview)mailingPreview=null;
-    }
+    if(error.job)mailingShowJob(error.job);
+    if((error.job||error.status===409)&&mailingPreview===preview)mailingInvalidate();
   }finally{
     mailingSending=false;
     $('mailing-confirm').checked=false;
@@ -1807,6 +1942,7 @@ $('mailing-send').addEventListener('click',async()=>{
 $('mailing-preview').disabled=true;
 $('correction-request').value=state.correctionRequest||'';
 setForm();
+mailingTab(contentType(state.dossier)==='evenement'?'event':'editor');
 $('main').inert=false;
 $('studio-loading').hidden=true;
 updateGaps();

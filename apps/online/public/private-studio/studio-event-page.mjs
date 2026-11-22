@@ -1,4 +1,6 @@
-import {eventDetails} from './studio-model.mjs';
+import {eventDetails, eventIcon} from './studio-model.mjs';
+
+export const eventIconPreviewUrl = key => new URL(`./event-icons/pictogram-${key}.svg`, import.meta.url).href;
 
 const invalidEvent = message => Object.assign(new Error(message), {status: 400});
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -60,13 +62,18 @@ export function renderEventPage(proposal, image, {preview = false} = {}) {
   const marker = mode === 'site' ? 'studio-wordpress-registration' : mode === 'external' ? 'studio-event-external-registration' : 'studio-event-no-registration';
   const practical = eventDetails({...details, registrationUrl:''}).map(([label,value]) =>
     `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
-  const figure = image?.url ? `<figure class="studio-image"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt || title)}">${image.credit ? `<figcaption>${escapeHtml(image.credit)}</figcaption>` : ''}</figure>` : '';
+  const icon = eventIcon(basis);
+  const figure = icon
+    ? (preview
+      ? `<figure class="studio-image studio-event-pictogram"><img src="${escapeHtml(eventIconPreviewUrl(icon))}" alt=""></figure>`
+      : `\n\n[hl_studio_event_icon name="${icon}"]\n\n`)
+    : image?.url ? `<figure class="studio-image"><img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt || title)}">${image.credit ? `<figcaption>${escapeHtml(image.credit)}</figcaption>` : ''}</figure>` : '';
   const body = paragraph(basis.sourceText);
   const sources = paragraph(basis.sources);
   const signup = mode === 'site' ? (preview ? registrationPreview : '\n\n[hl_event_registration]\n\n') : '';
   const button = mode === 'site' ? `<a class="studio-event-button" href="#inscription">S’inscrire</a>` :
     external ? `<a class="studio-event-button" href="${escapeHtml(external)}">S’inscrire sur le site partenaire</a>` : '';
-  return `<article class="studio-event-page ${marker}">
+  return `<article class="studio-event-page ${marker}${icon ? ' studio-event-icon-' + icon : ''}">
   <header class="event-hero studio-event-hero">
     <div class="studio-event-heading">
       <p class="studio-event-kicker">Événement</p>
