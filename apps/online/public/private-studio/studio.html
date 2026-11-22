@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=preview-flow">
+  <link rel="stylesheet" href="studio-mvp.css?v=mailing-compose">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=instagram-carousel"></script>
+  <script type="module" src="studio-mvp.js?v=mailing-compose"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -24,10 +24,10 @@
     </section>
     <section class="connection-overview" aria-label="État des connexions">
       <a href="/setup"><strong>n8n · Rédaction</strong><span id="home-n8n-status">Vérification…</span></a>
-      <a href="#mailing-view" id="home-brevo-link"><strong>Brevo · Mailing</strong><span id="home-brevo-status">Vérification…</span></a>
+      <a href="#mailing-view" id="home-brevo-link"><strong>Brevo · Newsletter</strong><span id="home-brevo-status">Vérification…</span></a>
       <a href="#instagram-view" id="home-instagram-link"><strong>Instagram · Meta</strong><span id="home-instagram-status">Vérification…</span></a>
     </section>
-    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
+    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Newsletter</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
     <div id="editor-view">
     <section class="workflow" aria-labelledby="workflow-title">
       <div class="section-head"><h2 id="workflow-title">Parcours du dossier</h2><strong id="current-status" aria-live="polite">Nouveau récit</strong></div>
@@ -42,7 +42,7 @@
       <span>Dossier remis à zéro. Vous pouvez restaurer le précédent avant de commencer une nouvelle saisie.</span>
       <button id="undo-reset" type="button" class="button secondary">Restaurer le dossier précédent</button>
     </div>
-    <div class="workspace">
+    <div id="studio-workspace" class="workspace">
       <section class="panel input-panel" aria-labelledby="dossier-title">
         <div class="panel-head"><p class="eyebrow">Étape 01</p><h2 id="dossier-title" tabindex="-1">Nouveau récit</h2><p id="dossier-intro">Collez le texte relu de votre récit. Ajoutez des images si vous en avez.</p></div>
         <form id="dossier-form">
@@ -100,7 +100,7 @@
           <div class="action-row"><button type="submit" class="button primary">Générer l’aperçu</button></div>
         </form>
       </section>
-      <div class="output-column">
+      <div id="studio-output" class="output-column">
         <section class="panel review-panel" aria-labelledby="review-title">
           <div class="panel-head"><p class="eyebrow">Étape 02</p>
             <div class="review-heading"><h2 id="review-title" tabindex="-1">Aperçu</h2><button id="story-templates" class="template-info-button" type="button" popovertarget="story-template-info" aria-label="Voir les gabarits de récit" title="Gabarits de récit">i</button></div>
@@ -225,8 +225,8 @@
       <div class="mailing-card"><h3>Reel</h3><p>En préparation</p></div>
     </section>
     <section id="mailing-view" class="mailing-view" aria-labelledby="mailing-title" hidden>
-      <div class="panel-head"><p class="eyebrow">La Newsletter / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez un récit publié ou un événement à venir. Le Studio vérifiera les abonnés confirmés, créera les campagnes Brevo et répartira jusqu’à 400 destinataires sur deux jours.</p></div>
-      <details class="mailing-card">
+      <div class="panel-head"><p class="eyebrow">La Newsletter / Diffusion</p><h2 id="mailing-title">Préparer un envoi</h2><p>Choisissez une publication et un modèle, puis personnalisez le mail avant de programmer son envoi.</p></div>
+      <details id="mailing-automation" class="mailing-card">
         <summary>Modèles d’e-mails automatiques</summary>
         <p>Maquettes à prévisualiser. Les déclencheurs et la livraison restent à vérifier.</p>
         <label>Modèle <select id="mailing-automation-template"><option value="welcome">Bienvenue dans La Newsletter</option><option value="registration">Confirmation d’inscription à un événement</option><option value="unsubscribe">Confirmation de désinscription de La Newsletter</option></select></label>
@@ -242,17 +242,33 @@
       <div class="mailing-card">
         <div class="mailing-card-head"><h3>1. Publication</h3><button id="mailing-refresh" type="button" class="button secondary">Actualiser les publications</button></div>
         <label>Récit ou événement publié <select id="mailing-post"><option value="">Chargement des publications…</option></select></label>
-        <label id="mailing-purpose-field" hidden>Type d’envoi pour l’événement <select id="mailing-purpose"><option value="invitation">Invitation à l’événement</option><option value="announcement">Annonce</option><option value="reminder">Rappel avant l’événement</option></select></label>
+        <label id="mailing-purpose-field" hidden>Mail à envoyer
+          <select id="mailing-purpose">
+            <option value="invitation">Invitation à l’événement</option>
+            <option value="announcement">Annonce de l’événement</option>
+            <option value="follow_up">Relance des abonnés non inscrits</option>
+            <option value="confirmation">Confirmation aux inscrits</option>
+            <option value="reminder">Rappel pratique aux inscrits</option>
+            <option value="thanks">Remerciement aux inscrits</option>
+          </select>
+        </label>
         <a id="mailing-registrations-csv" class="button secondary" hidden>Télécharger les inscrits (CSV)</a>
+        <div id="mailing-external" hidden>
+          <label>Adresses des inscrits
+            <textarea id="mailing-external-emails" rows="4" maxlength="510000" autocomplete="off" aria-describedby="mailing-external-help"></textarea>
+          </label>
+          <p id="mailing-external-help" class="hint">Les inscriptions sont gérées hors du Studio. Collez la colonne des e-mails de votre export, avec une adresse par ligne.</p>
+          <label class="confirmation"><input id="mailing-external-complete" type="checkbox"> J’ai vérifié la liste complète, y compris si elle est vide.</label>
+        </div>
         <p id="mailing-post-note" class="hint" role="status"></p>
         <label>Objet de l’e-mail <input id="mailing-subject-input" type="text" maxlength="160" placeholder="À lire · …"></label>
         <label>Texte d’aperçu <input id="mailing-preheader-input" type="text" maxlength="220" placeholder="Une phrase visible dans la boîte de réception"></label>
-        <label>Introduction de l’e-mail <textarea id="mailing-intro" rows="4" placeholder="Présentez ce récit ou cet événement en quelques phrases."></textarea></label>
+        <label>Introduction de l’e-mail <textarea id="mailing-intro" rows="4" maxlength="1200" placeholder="Présentez ce récit ou cet événement en quelques phrases."></textarea></label>
       </div>
       <div class="mailing-card">
-        <h3>2. Destinataires et aperçu</h3><p id="mailing-audience" class="hint" role="status">Vérification de la liste newsletter…</p>
-        <p class="hint">Le Studio réserve 50 e-mails par jour pour les confirmations et les bienvenues. Il programme au plus 250 lettres par jour, à 10 h, à partir du lendemain.</p>
-        <button id="mailing-preview" type="button" class="button secondary">Prévisualiser la Newsletter</button>
+        <h3>2. Destinataires et aperçu</h3><p id="mailing-audience" class="hint" role="status">Choisissez une publication.</p>
+        <p class="hint">Le Studio réserve 50 e-mails par jour pour les confirmations et les bienvenues. Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.</p>
+        <button id="mailing-preview" type="button" class="button secondary">Actualiser l’aperçu du mail</button>
         <p id="mailing-preview-status" class="hint" role="status"></p>
         <div id="mailing-preview-panel" hidden><p><strong>Objet :</strong> <span id="mailing-subject"></span></p><p><strong>Aperçu :</strong> <span id="mailing-preheader"></span></p><iframe id="mailing-preview-frame" title="Aperçu de la Newsletter" sandbox=""></iframe></div>
       </div>

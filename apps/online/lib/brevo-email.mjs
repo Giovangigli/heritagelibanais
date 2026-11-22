@@ -6,7 +6,7 @@ function httpsUrl(value, fallback) {
   try { const url = new URL(String(value)); return url.protocol === 'https:' ? url.href : fallback; }
   catch { return fallback; }
 }
-function paragraph(value) { return `<p style="margin:0 0 20px;color:${COLORS.ink};font:16px/1.55 Arial,sans-serif">${escapeHtml(value)}</p>`; }
+function paragraph(value) { return `<p style="margin:0 0 20px;color:${COLORS.ink};font:16px/1.55 Arial,sans-serif">${escapeHtml(value).replace(/\r?\n/g, '<br>')}</p>`; }
 function row(label, value) {
   if (!value) return '';
   return `<tr><td style="padding:11px 0;border-top:1px solid #C7CEC3;color:${COLORS.ink};font:700 11px/1.4 Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;width:115px;vertical-align:top">${escapeHtml(label)}</td><td style="padding:11px 0;border-top:1px solid #C7CEC3;color:${COLORS.ink};font:15px/1.45 Arial,sans-serif">${escapeHtml(value)}</td></tr>`;
@@ -20,8 +20,9 @@ function image(url, alt, credit) {
   if (!safe) return '';
   return `<img src="${escapeHtml(safe)}" alt="${escapeHtml(alt || '')}" width="560" style="display:block;width:100%;height:auto;border:0;background:${COLORS.mist}">${credit ? `<p style="margin:6px 0 22px;color:#5C675E;font:12px/1.4 Arial,sans-serif">${escapeHtml(credit)}</p>` : ''}`;
 }
-function shell(kicker, title, body, previewText) {
-  return `<!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:0;background:${COLORS.paper}"><div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(previewText)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${COLORS.paper}"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#FFFDFA"><tr><td style="padding:30px 20px 26px;background:${COLORS.ink};color:#FFFFFF"><a href="${SITE}" style="color:#FFFFFF;text-decoration:none;font:600 24px/1.15 Georgia,serif">Héritage Libanais</a><div style="margin-top:8px;color:#DCE8DF;font:700 11px/1.4 Arial,sans-serif;letter-spacing:.15em;text-transform:uppercase">La Newsletter</div></td></tr><tr><td style="padding:30px 20px 34px"><p style="margin:0 0 12px;color:${COLORS.red};font:700 11px/1.4 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(kicker)}</p><h1 style="margin:0 0 24px;color:${COLORS.ink};font:600 34px/1.12 Georgia,serif">${escapeHtml(title)}</h1>${body}</td></tr><tr><td style="padding:22px 20px;background:${COLORS.mist};color:${COLORS.ink};font:13px/1.6 Arial,sans-serif"><strong>Héritage Libanais</strong><br><a href="${SITE}" style="color:${COLORS.ink}">heritage-libanais.fr</a> · <a href="https://www.instagram.com/heritagelibanais/" style="color:${COLORS.ink}">Instagram</a><br><a href="{{ unsubscribe }}" style="color:${COLORS.ink}">Se désinscrire de la Newsletter</a></td></tr></table></td></tr></table></body></html>`;
+function shell(kicker, title, body, previewText, eventNotice = false) {
+  const unsubscribe = eventNotice ? '' : `<br><a href="{{ unsubscribe }}" style="color:${COLORS.ink}">Se désinscrire de la Newsletter</a>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body style="margin:0;padding:0;background:${COLORS.paper}"><div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(previewText)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${COLORS.paper}"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#FFFDFA"><tr><td style="padding:30px 20px 26px;background:${COLORS.ink};color:#FFFFFF"><a href="${SITE}" style="color:#FFFFFF;text-decoration:none;font:600 24px/1.15 Georgia,serif">Héritage Libanais</a><div style="margin-top:8px;color:#DCE8DF;font:700 11px/1.4 Arial,sans-serif;letter-spacing:.15em;text-transform:uppercase">${eventNotice ? 'Nos rencontres' : 'La Newsletter'}</div></td></tr><tr><td style="padding:30px 20px 34px"><p style="margin:0 0 12px;color:${COLORS.red};font:700 11px/1.4 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase">${escapeHtml(kicker)}</p><h1 style="margin:0 0 24px;color:${COLORS.ink};font:600 34px/1.12 Georgia,serif">${escapeHtml(title)}</h1>${body}</td></tr><tr><td style="padding:22px 20px;background:${COLORS.mist};color:${COLORS.ink};font:13px/1.6 Arial,sans-serif"><strong>Héritage Libanais</strong><br><a href="${SITE}" style="color:${COLORS.ink}">heritage-libanais.fr</a> · <a href="https://www.instagram.com/heritagelibanais/" style="color:${COLORS.ink}">Instagram</a>${unsubscribe}</td></tr></table></td></tr></table></body></html>`;
 }
 
 export function renderStoryEmail(input) {
@@ -39,16 +40,44 @@ export function renderStoryEmail(input) {
   return { subject: String(input.subject || `À lire · ${title}`).trim(), previewText, html: shell('Récit en images', title, parts.join(''), previewText) };
 }
 
+export const EVENT_MAILS = Object.freeze({
+  invitation: {
+    label: 'Invitation', kicker: 'Vous êtes invité', audience: 'newsletter',
+    intro: 'Nous avons le plaisir de vous inviter à cette rencontre. Retrouvez les informations pratiques et les modalités d’inscription ci-dessous.',
+  },
+  announcement: {
+    label: 'Rencontre', kicker: 'Nos rencontres', audience: 'newsletter',
+    intro: 'Nous vous annonçons une prochaine rencontre. Retrouvez la présentation et les informations pratiques sur notre site.',
+  },
+  follow_up: {
+    label: 'Relance', kicker: 'Les inscriptions sont ouvertes', audience: 'newsletter_unregistered',
+    intro: 'Vous souhaitez nous rejoindre ? Les inscriptions à cette rencontre sont ouvertes. Retrouvez les informations pratiques et réservez votre place.',
+  },
+  confirmation: {
+    label: 'Inscription confirmée', kicker: 'Votre inscription est confirmée', audience: 'event_registrants',
+    intro: 'Votre inscription à cette rencontre est confirmée. Retrouvez ci-dessous les informations utiles pour votre venue.',
+  },
+  reminder: {
+    label: 'Rappel', kicker: 'Rappel de l’événement', audience: 'event_registrants',
+    intro: 'Notre rencontre approche. Voici les informations pratiques pour préparer votre venue.',
+  },
+  thanks: {
+    label: 'Merci pour votre inscription', kicker: 'Merci de vous être inscrit', audience: 'event_registrants',
+    intro: 'Nous vous remercions de vous être inscrit à cette rencontre et de l’intérêt que vous portez aux activités d’Héritage Libanais.',
+  },
+});
+
 export function renderEventEmail(input) {
   const title = String(input.title || '').trim();
   if (!title || !input.intro || !input.date || !input.url) throw new TypeError('Title, introduction, date and event URL are required.');
   const url = httpsUrl(input.url, ''); if (!url) throw new TypeError('The event URL must use HTTPS.');
-  const reminder = input.purpose === 'reminder';
-  const invitation = input.purpose === 'invitation';
-  const previewText = String(input.previewText || `${input.date}${input.city ? ` · ${input.city}` : ''}`).trim();
+  const model = EVENT_MAILS[input.purpose] || EVENT_MAILS.announcement;
+  const eventNotice = model.audience === 'event_registrants';
+  const signupUrl = !eventNotice && input.registrationUrl ? httpsUrl(input.registrationUrl, url) : null;
+  const previewText = String(input.previewText || (eventNotice && input.purpose !== 'reminder' ? input.intro : `${input.date}${input.city ? ` · ${input.city}` : ''}`)).trim();
   const details = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0 0">${row('Date', input.date)}${row('Horaire', input.time)}${row('Lieu', input.venue)}${row('Ville', input.city)}${row('Tarif', input.price)}</table>`;
-  const body = image(input.imageUrl, input.imageAlt || title, input.imageCredit) + paragraph(input.intro) + details + button(input.registrationUrl ? 'S’inscrire' : 'Voir l’évènement', input.registrationUrl ? httpsUrl(input.registrationUrl, url) : url) + (input.practicalNote ? paragraph(input.practicalNote) : '');
-  return { subject: String(input.subject || `${reminder ? 'Rappel' : invitation ? 'Invitation' : 'Rencontre'} · ${title} · ${input.date}`).trim(), previewText, html: shell(reminder ? 'Rappel de l’événement' : invitation ? 'Vous êtes invité' : 'Nos rencontres', title, body, previewText) };
+  const body = image(input.imageUrl, input.imageAlt || title, input.imageCredit) + paragraph(input.intro) + (input.past ? '' : details) + button(signupUrl ? 'S’inscrire' : 'Voir l’évènement', signupUrl || url) + (input.practicalNote ? paragraph(input.practicalNote) : '');
+  return { subject: String(input.subject || `${model.label} · ${title} · ${input.date}`).trim(), previewText, html: shell(model.kicker, title, body, previewText, eventNotice) };
 }
 
 export function renderWelcomeTemplate() {
@@ -65,6 +94,7 @@ export function renderAutomationPreview(kind) {
     html: shell('Bienvenue', 'Une histoire à recevoir.', paragraph('Merci d’avoir confirmé votre inscription à La Newsletter Héritage Libanais. Vous recevrez nos nouveaux récits et les annonces de rencontres.') + button('Découvrir les récits', SITE + '/recits/'), 'Votre inscription est confirmée.'),
   };
   if (kind === 'registration') return renderEventEmail({
+    purpose: 'confirmation',
     title: 'Rencontre Héritage Libanais',
     subject: 'Inscription confirmée · Rencontre Héritage Libanais',
     intro: 'Votre place est réservée. Retrouvez ci-dessous les informations utiles pour votre venue.',

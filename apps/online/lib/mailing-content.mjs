@@ -21,7 +21,7 @@ function publicationImage(html) {
   return {};
 }
 
-export function parsePublishedPosts(posts,now=Date.now()){
+export function parsePublishedPosts(posts,now=Date.now(),{includePastEvents=false}={}){
   if(!Array.isArray(posts))throw new TypeError('Réponse WordPress invalide.');
   return posts.flatMap(post=>{
     const html=String(post?.content?.rendered||'');
@@ -29,32 +29,44 @@ export function parsePublishedPosts(posts,now=Date.now()){
     const url=publishedUrl(post?.link),title=plain(post?.title?.rendered);
     if(!type||!url||!title||!Number.isSafeInteger(post?.id))return [];
     let eventDate='',date='';
+    let registrationSource,registrationUrl,past;
     if(type==='evenement'){
       const match=html.match(/<time\b[^>]*datetime=["']([^"']+)["']/i);
       eventDate=match?.[1]||'';
       const timestamp=Date.parse(eventDate);
-      if(!Number.isFinite(timestamp)||timestamp<=now)return [];
+      if(!Number.isFinite(timestamp))return [];
+      past = timestamp <= now;
+      if (past && !includePastEvents) return [];
+      registrationSource = html.includes('studio-native-registration') ? 'studio' : 'external';
+      if (registrationSource === 'external') {
+        const link = html.match(/class=["'][^"']*event-practical[^"']*["'][^>]*>[\s\S]*?(https:\/\/[^<"'\s]+)/i);
+        registrationUrl = link?.[1] ? decode(link[1]) : undefined;
+      }
       date=new Intl.DateTimeFormat('fr-FR',{dateStyle:'long',timeStyle:'short',timeZone:'Europe/Paris'}).format(timestamp);
     }
     const introMatch=html.match(/class=["'][^"']*(?:new-slide-copy|event-story-copy)[^"']*["'][^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i);
     const intro=plain(introMatch?.[1]||'').slice(0,600);
-    return [{id:post.id,type,title,url,publishedAt:post.date||'',intro,eventDate,date,...publicationImage(html)}];
+    return [{id:post.id,type,title,url,publishedAt:post.date||'',intro,eventDate,date,...(type === 'evenement' ? {past,registrationSource,registrationUrl} : {}),...publicationImage(html)}];
   }).sort((a,b)=>b.publishedAt.localeCompare(a.publishedAt));
 }
-export async function fetchPublishedContent(fetchImpl=fetch){
+export async function fetchPublishedContent(fetchImpl=fetch,{includePastEvents=false}={}){
   const response=await fetchImpl(POSTS_URL,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw new Error('Le catalogue du site est momentanément indisponible.');
-  const posts = parsePublishedPosts(await response.json());
+  const now = Date.now();
+  const posts = parsePublishedPosts(await response.json(), now, {includePastEvents});
   // This event is rendered by a WordPress page template, outside the posts feed.
   const eventDate = '2026-11-28T16:00:00+01:00';
   const url = 'https://heritage-libanais.fr/lidentite-libanaise-en-danger-2e-session/';
-  if (Date.parse(eventDate) > Date.now() && !posts.some(post => post.url === url)) {
+  const past = Date.parse(eventDate) <= now;
+  if ((!past || includePastEvents) && !posts.some(post => post.url === url)) {
     posts.unshift({
       id: -20261128,
       type: 'evenement',
       title: 'L’identité libanaise en danger — deuxième session',
       url,
       eventDate,
+      past,
+      registrationSource: 'external',
       date: '28 novembre 2026 à 16 h',
       intro: 'Le CCJFL et Héritage Libanais vous invitent à une deuxième session de cette conférence autour de l’histoire, de l’identité et de l’avenir du Liban.',
       venue: 'Mairie du XVe · Salle des mariages · 31, rue Péclet, 75015 Paris',

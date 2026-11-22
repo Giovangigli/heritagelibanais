@@ -153,16 +153,16 @@ test('publication and preview survive missing Brevo credentials',async()=>{
 
 test('an event reminder has distinct preview content and a story cannot be reminded',async()=>{
   const eventDate=new Date(Date.now()+7*86400000).toISOString();
-  const fetchImpl=async()=>Response.json([...published,{id:13,link:'https://heritage-libanais.fr/evenement/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero"><time datetime="${eventDate}">Bientôt</time></article>`}}]);
+  const fetchImpl=async()=>Response.json([...published,{id:13,link:'https://heritage-libanais.fr/evenement/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero studio-native-registration"><time datetime="${eventDate}">Bientôt</time></article>`}}]);
   const input={postId:13,intro:'Nous vous attendons pour cette rencontre.',purpose:'reminder'};
   const {db,sql}=database();
   sql.prepare('INSERT INTO studio_event_registrations (id, workspace_id, event_post_id, email, name, created_at) VALUES (?,?,?,?,?,?)').run('a','owner',13,'a@example.org','A',eventDate);
   sql.prepare('INSERT INTO studio_event_registrations (id, workspace_id, event_post_id, email, name, created_at) VALUES (?,?,?,?,?,?)').run('b','owner',14,'b@example.org','B',eventDate);
   const preview=await (await call('preview',{db,fetchImpl,method:'POST',body:input})).json();
-  assert.equal(preview.registeredCount,1);
+  assert.equal(preview.audience.registeredCount,1);
   assert.match(preview.email.subject,/^Rappel/);
   assert.match(preview.email.html,/Rappel de l’événement/);
-  await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/invitations et rappels concernent uniquement/);
+  await assert.rejects(call('preview',{fetchImpl,method:'POST',body:{...input,postId:12}}),/réservé aux événements/);
 });
 
 test('an editor schedules 400 approved contacts across two days, with shared history and an individual audit',async()=>{
@@ -188,7 +188,7 @@ test('an editor schedules 400 approved contacts across two days, with shared his
       lists.set(id,[]);
       return Response.json({id});
     }
-    if(path.endsWith('/contacts')){
+    if(path.endsWith('/contacts/add')){
       const id=Number(path.split('/')[4]);
       lists.get(id).push(...body.ids);
       return Response.json({contacts:{failure:[]}});
@@ -199,9 +199,9 @@ test('an editor schedules 400 approved contacts across two days, with shared his
     return Response.json({id});
   };
   const draft={postId:12,intro:'Un nouveau récit à découvrir cette semaine.'};
-  const preview=await (await call('preview',{method:'POST',body:draft,fetchImpl})).json();
-  const body={...draft,confirmed:true,contentHash:preview.contentHash,requestId:crypto.randomUUID()};
   const env={BREVO_API_KEY:'shared-service-key'};
+  const preview=await (await call('preview',{method:'POST',body:draft,db,env,fetchImpl})).json();
+  const body={...draft,confirmed:true,contentHash:preview.contentHash,requestId:crypto.randomUUID()};
   const result=await (await call('send',{method:'POST',body,db,env,fetchImpl})).json();
   assert.equal(result.job.status,'scheduled');
   assert.equal(result.job.actorUserId,editor.userId);
@@ -214,4 +214,70 @@ test('an editor schedules 400 approved contacts across two days, with shared his
   assert.deepEqual(personalHistory.jobs,[]);
   const retry=await (await call('send',{method:'POST',body,db,actor:owner,access:ownerAccess})).json();
   assert.deepEqual(retry,result);
+});
+
+test('a follow-up excludes event registrants from the newsletter while confirmations and thanks target only registrants', async () => {
+  const {db,sql}=database();
+  const eventDate=new Date(Date.now()+7*86400000).toISOString();
+  const event={id:13,link:'https://heritage-libanais.fr/evenement/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero studio-native-registration"><time datetime="${eventDate}">Bientôt</time></article>`}};
+  const register=sql.prepare('INSERT INTO studio_event_registrations VALUES (?,?,?,?,?,?)');
+  register.run('a','owner',13,'both@example.test','A',eventDate);
+  register.run('b','owner',13,'registered@example.test','B',eventDate);
+  register.run('c','owner',14,'newsletter@example.test','C',eventDate);
+  const contacts=['BOTH@example.test','newsletter@example.test'].map((email,index)=>({
+    id:index+1,email,attributes:{HL_SIGNUP_SOURCE:'heritage-libanais.fr/la-lettre',HL_CONSENT_VERSION:'v1'},
+  }));
+  const readProvider=provider({contacts});
+  const delivery=[];
+  const fetchImpl=async (url,options)=>{
+    const {hostname,pathname}=new URL(url);
+    if(hostname==='heritage-libanais.fr')return Response.json([event]);
+    if(pathname.startsWith('/v3/emailCampaigns/') && options.method==='GET')return Response.json({status:'queued'});
+    if(options.method==='GET')return readProvider(url,options);
+    const body=JSON.parse(options.body);
+    delivery.push({pathname,body});
+    if(pathname==='/v3/smtp/email')return Response.json({messageIds:body.messageVersions.map((_,i)=>'message-'+i)});
+    return Response.json({id:20});
+  };
+  const env={BREVO_API_KEY:'shared-service-key'};
+  for(const [purpose,kind,count,subject] of [
+    ['follow_up','newsletter_unregistered',1,/Relance/],
+    ['confirmation','event_registrants',2,/Inscription confirmée/],
+    ['thanks','event_registrants',2,/Merci/],
+  ]){
+    const draft={postId:13,purpose};
+    const preview=await (await call('preview',{method:'POST',body:draft,db,env,fetchImpl})).json();
+    assert.equal(preview.audience.kind,kind);
+    assert.equal(preview.audience.count,count);
+    assert.match(preview.email.subject,subject);
+    const result=await (await call('send',{method:'POST',body:{...draft,confirmed:true,contentHash:preview.contentHash,requestId:crypto.randomUUID()},db,env,fetchImpl})).json();
+    assert.equal(result.job.status,'scheduled');
+  }
+  const draft={postId:13,purpose:'follow_up'};
+  const preview=await (await call('preview',{method:'POST',body:draft,db,env,fetchImpl})).json();
+  register.run('d','owner',13,'newsletter@example.test','D',eventDate);
+  await assert.rejects(call('send',{
+    method:'POST',body:{...draft,confirmed:true,contentHash:preview.contentHash,requestId:crypto.randomUUID()},db,env,fetchImpl,
+  }),{status:409});
+  assert.deepEqual(delivery.find(({pathname})=>pathname.endsWith('/contacts/add')).body.ids,[2]);
+  for(const {body} of delivery.filter(({pathname})=>pathname==='/v3/smtp/email')){
+    assert.deepEqual(body.messageVersions.map(version=>version.to.map(x=>x.email)),[['both@example.test'],['registered@example.test']]);
+  }
+});
+
+test('an externally managed event requires the complete list, and past events can be thanked',async()=>{
+  const eventDate=new Date(Date.now()-7*86400000).toISOString();
+  const event={id:15,link:'https://heritage-libanais.fr/rencontre/',title:{rendered:'Rencontre'},content:{rendered:`<article class="event-hero"><time datetime="${eventDate}">Date</time></article>`}};
+  const fetchImpl=async()=>Response.json([event]);
+  const catalogue=await (await call('content?includePastEvents=1',{fetchImpl})).json();
+  assert.equal(catalogue.posts.find(post=>post.id===15)?.past,true);
+  const draft={postId:15,purpose:'thanks'};
+  const missing=await (await call('preview',{method:'POST',body:draft,fetchImpl})).json();
+  assert.equal(missing.audience.count,null);
+  assert.match(missing.audience.problem,/liste complète/);
+  const preview=await (await call('preview',{method:'POST',body:{...draft,externalRegistrations:['A@example.test','a@example.test']},fetchImpl})).json();
+  assert.equal(preview.audience.count,1);
+  assert.equal(preview.audience.problem,null);
+  assert.doesNotMatch(JSON.stringify(preview),/a@example\.test/i);
+  await assert.rejects(call('preview',{method:'POST',body:{...draft,purpose:'invitation'},fetchImpl}),{status:400});
 });

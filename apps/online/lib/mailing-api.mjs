@@ -1,12 +1,14 @@
 import {listEventRegistrations} from './event-registrations.mjs';
 import {fetchPublishedContent} from './mailing-content.mjs';
-import {renderStoryEmail,renderEventEmail,renderAutomationPreview} from './brevo-email.mjs';
+import {renderStoryEmail,renderEventEmail,renderAutomationPreview,EVENT_MAILS} from './brevo-email.mjs';
 
 const BREVO='https://api.brevo.com/v3';
 const ORGANIZATION='6ae79b0ecddd8ac19c05da12';
 const NEWSLETTER_LIST=3;
 const DAY_CAP=250; // Leave at least 50 of the Free plan's 300 sends for signups and welcome emails.
 const MAX_AUDIENCE=400;
+const MAX_EXTERNAL_REGISTRATIONS=2000;
+const emailKey=email=>email.trim().toLowerCase();
 const failure=(message,status=400,details={})=>Object.assign(new Error(message),{status,...details});
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 
@@ -85,17 +87,75 @@ export function nextParisMorning(daysFromToday,now=new Date()){
   return new Date(rough.getTime()-offsetForParis(rough)*60000).toISOString();
 }
 async function resolvedEmail(input,fetchImpl){
-  if(!Number.isSafeInteger(input?.postId)||typeof input.intro!=='string'||input.intro.trim().length<20||input.intro.length>1200)throw failure('Choisissez une publication et écrivez une introduction de 20 à 1 200 caractères.');
+  if(!Number.isSafeInteger(input?.postId))throw failure('Choisissez une publication.');
+  if(input.intro!==undefined&&(typeof input.intro!=='string'||input.intro.trim().length<20||input.intro.length>1200))throw failure('L’introduction doit contenir de 20 à 1 200 caractères.');
   if(input.subject!==undefined&&(typeof input.subject!=='string'||input.subject.trim().length<5||input.subject.length>160))throw failure('L’objet doit contenir de 5 à 160 caractères.');
   if(input.previewText!==undefined&&(typeof input.previewText!=='string'||input.previewText.trim().length<5||input.previewText.length>220))throw failure('Le texte d’aperçu doit contenir de 5 à 220 caractères.');
-  const post=(await fetchPublishedContent(fetchImpl)).find(item=>item.id===input.postId);
+  const post=(await fetchPublishedContent(fetchImpl,{includePastEvents:true})).find(item=>item.id===input.postId);
   if(!post)throw failure('Cette publication n’est pas disponible pour un envoi.');
   const purpose=input.purpose||'announcement';
-  if(!['announcement','reminder','invitation'].includes(purpose)||(purpose!=='announcement'&&post.type!=='evenement'))throw failure('Les invitations et rappels concernent uniquement les événements à venir.');
-  const common={title:post.title,intro:input.intro.trim(),url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt,subject:input.subject?.trim(),previewText:input.previewText?.trim()};
-  const email=post.type==='evenement'?renderEventEmail({...common,date:post.date,venue:post.venue,registrationUrl:post.registrationUrl,purpose}):renderStoryEmail(common);
-  return {post,email,purpose};
+  const isEvent=post.type==='evenement';
+  if(typeof purpose!=='string'||!Object.hasOwn(EVENT_MAILS,purpose)||(!isEvent&&purpose!=='announcement'))throw failure('Ce modèle est réservé aux événements.');
+  if(post.past&&purpose!=='thanks')throw failure('Seul le remerciement est disponible pour un événement passé.');
+  const model=EVENT_MAILS[purpose];
+  const defaultIntro=(isEvent && purpose==='invitation' ? post.intro : '') || (isEvent ? model.intro : post.intro || 'Découvrez notre nouveau récit sur le site d’Héritage Libanais.');
+  const intro=input.intro?.trim()||defaultIntro;
+  const common={title:post.title,intro,url:post.url,imageUrl:post.imageUrl,imageAlt:post.imageAlt,subject:input.subject?.trim(),previewText:input.previewText?.trim()};
+  const email=isEvent?renderEventEmail({...common,date:post.date,past:post.past,venue:post.venue,registrationUrl:post.registrationUrl,purpose}):renderStoryEmail(common);
+  return {post,email,purpose,intro,kind:isEvent?model.audience:'newsletter'};
 }
+
+async function eventEmails(db,workspaceId,post,input){
+  if(post.registrationSource==='external'){
+    const rows=input.externalRegistrations;
+    if(rows===undefined)return null;
+    if(!Array.isArray(rows)||rows.length>MAX_EXTERNAL_REGISTRATIONS||
+        rows.some(email=>typeof email!=='string'||email.length>254||!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/u.test(email.trim()))){
+      throw failure('Collez jusqu’à 2 000 adresses e-mail valides, une par ligne.');
+    }
+    return [...new Set(rows.map(emailKey))].sort();
+  }
+  const emails=[];
+  let afterEmail='';
+  for(;;){
+    const rows=await listEventRegistrations(db,{workspaceId,eventPostId:post.id,afterEmail,limit:500});
+    emails.push(...rows.map(row=>emailKey(row.email)));
+    if(rows.length<500)return [...new Set(emails)].sort();
+    afterEmail=rows.at(-1).email;
+  }
+}
+
+async function mailingAudience({post,kind},input,{db,workspaceUserId,connectionKey,fetchImpl}){
+  let registrations=null;
+  if(kind!=='newsletter'){
+    registrations=await eventEmails(db,workspaceUserId,post,input);
+    if(registrations===null)return {people:null,registeredCount:null,problem:'Renseignez la liste complète des inscrits pour vérifier cet envoi.'};
+  }
+  const registeredCount=registrations?.length??null;
+  if(kind==='event_registrants')return {people:registrations.map(email=>({email})),registeredCount};
+  const key=await connectionKey();
+  if(!key)return {people:null,registeredCount,problem:'Connectez Brevo pour vérifier les destinataires.'};
+  await expectedAccount(key,fetchImpl);
+  await verifyNewsletterList(key,fetchImpl);
+  const subscribers=await audience(key,fetchImpl);
+  const registered=new Set(registrations);
+  return {people:subscribers.filter(person=>!registered.has(emailKey(person.email))),registeredCount};
+}
+
+function audienceProblem({post,purpose,kind},{people,problem}){
+  if(problem)return problem;
+  if(!people.length)return kind==='event_registrants'?'Aucune inscription pour cet événement.':'Aucun abonné éligible pour cet envoi.';
+  if(people.length>MAX_AUDIENCE)return `Cet envoi dépasse la limite de ${MAX_AUDIENCE} destinataires.`;
+  if(post.type==='evenement'&&purpose!=='thanks'&&Date.parse(post.eventDate)<=Date.parse(nextParisMorning(Math.ceil(people.length/DAY_CAP)))){
+    return 'L’envoi ne peut pas atteindre tous les destinataires avant l’événement.';
+  }
+  return null;
+}
+
+function mailingHash({post,email,purpose,kind},people){
+  return hash({postId:post.id,email,purpose,recipients:people?.map(person=>kind==='event_registrants'?person.email:[person.id,emailKey(person.email)])??null});
+}
+
 async function hash(value){const bytes=new TextEncoder().encode(JSON.stringify(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 async function saveJob(db,job){await db.prepare('UPDATE studio_mailing_jobs SET state_json = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(job),new Date().toISOString(),job.id).run();}
 
@@ -106,7 +166,10 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
   const serverKey=role==='owner'||role==='editor'?env.BREVO_API_KEY?.trim():null;
   const connectionManaged=Boolean(serverKey);
   const connectionKey=()=>serverKey||storedKey(db,env,workspaceUserId,decryptToken);
-  if(path==='/api/mailing/content'&&request.method==='GET')return json({posts:await fetchPublishedContent(fetchImpl)});
+  if(path==='/api/mailing/content'&&request.method==='GET'){
+    const includePastEvents=new URL(request.url).searchParams.get('includePastEvents')==='1';
+    return json({posts:await fetchPublishedContent(fetchImpl,{includePastEvents})});
+  }
   if(path==='/api/mailing/automation-preview'&&request.method==='GET'){
     const kind=new URL(request.url).searchParams.get('kind');
     if(!['welcome','registration','unsubscribe'].includes(kind))throw failure('Modèle inconnu.');
@@ -171,11 +234,20 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     return json({ok:true});
   }
   if(path==='/api/mailing/preview'&&request.method==='POST'){
-    const input=await bodyJson(request);const {post,email}=await resolvedEmail(input,fetchImpl);
-    const registrations=post.id>0 && input.purpose==='reminder'
-      ?await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,limit:MAX_AUDIENCE+1})
-      :null;
-    return json({post,email,registeredCount:input.purpose==='reminder'?(registrations?.length??0):null,contentHash:await hash({postId:post.id,email,...(registrations?{recipients:registrations.map(row=>row.email)}:{})})});
+    const input=await bodyJson(request,600000);
+    const draft=await resolvedEmail(input,fetchImpl);
+    let recipients;
+    try{
+      recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey,fetchImpl});
+    }catch(error){
+      recipients={people:null,registeredCount:null,problem:error.status===400?error.message:'Le Studio n’a pas pu vérifier les destinataires.'};
+    }
+    const {post,email,intro,kind}=draft;
+    return json({
+      post,email,intro,
+      audience:{kind,count:recipients.people?.length??null,registeredCount:recipients.registeredCount,problem:audienceProblem(draft,recipients)},
+      contentHash:await mailingHash(draft,recipients.people),
+    });
   }
   if(path==='/api/mailing/jobs'&&request.method==='GET'){
     const rows=await db.prepare('SELECT state_json FROM studio_mailing_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').bind(workspaceUserId).all();
@@ -183,33 +255,25 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
   }
   if(path==='/api/mailing/send'&&request.method==='POST'){
     if(!canScheduleMailing)throw failure('Votre compte ne peut pas programmer de newsletter.',403);
-    const input=await bodyJson(request);
+    const input=await bodyJson(request,600000);
     if(input?.confirmed!==true||typeof input?.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId)||typeof input.contentHash!=='string')throw failure('Relisez l’aperçu et confirmez cet envoi.');
     const prior=await db.prepare('SELECT state_json FROM studio_mailing_jobs WHERE request_id = ? AND user_id = ?').bind(input.requestId,workspaceUserId).first();
     if(prior)return json({job:JSON.parse(prior.state_json)});
     const key=await connectionKey();
     if(!key)throw failure('La connexion Brevo doit être configurée avant de programmer cet envoi.',503);
-    const {post,email,purpose}=await resolvedEmail(input,fetchImpl);
+    const draft=await resolvedEmail(input,fetchImpl);
+    const {post,email,purpose,kind}=draft;
+    const eventNotice=kind==='event_registrants';
 
     const account=await expectedAccount(key,fetchImpl);
     const plan=freeCampaignPlan(account);
     if(!plan)throw failure('Le forfait Free Brevo a changé. Vérifiez-le avant l’envoi.',409);
     if(quotaExhausted(plan))throw failure('Le quota quotidien Brevo est atteint. Réessayez après son renouvellement.',409);
-    let people;
-    if(purpose==='reminder'){
-      if(post.id<=0)throw failure('Les inscriptions à cet événement sont gérées en dehors du Studio.',409);
-      const registrations=await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,limit:MAX_AUDIENCE+1});
-      if(!registrations.length)throw failure('Aucune inscription enregistrée pour cet événement.',409);
-      if(registrations.length>MAX_AUDIENCE)throw failure('Cet événement dépasse la limite de 400 inscrits par envoi.',409);
-      if(Date.parse(post.eventDate)<=Date.parse(nextParisMorning(Math.ceil(registrations.length/DAY_CAP))))throw failure('Le rappel ne peut pas être envoyé à tous les inscrits avant l’événement.',409);
-      people=registrations.map(({email})=>({email}));
-    }else{
-      await verifyNewsletterList(key,fetchImpl);
-      people=await audience(key,fetchImpl);
-      if(!people.length)throw failure('Aucun abonné confirmé et éligible dans la liste newsletter.',409);
-      if(people.length>MAX_AUDIENCE)throw failure(`La liste compte ${people.length} abonnés. Ce parcours est limité à ${MAX_AUDIENCE}.`,409);
-    }
-    const contentHash=await hash({postId:post.id,email,...(purpose==='reminder'?{recipients:people.map(row=>row.email)}:{})});
+    const recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey:()=>key,fetchImpl});
+    const problem=audienceProblem(draft,recipients);
+    if(problem)throw failure(problem,409);
+    const {people}=recipients;
+    const contentHash=await mailingHash(draft,people);
     if(contentHash!==input.contentHash)throw failure('La publication, l’e-mail ou les destinataires ont changé. Recommencez la prévisualisation.',409);
     const sender=await publicSender(key,fetchImpl,env.BREVO_SENDER_EMAIL);
     if(!sender)throw failure('Authentifiez heritage-libanais.fr et activez une adresse expéditrice sur ce domaine avant un envoi public.',409);
@@ -222,16 +286,30 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(JSON.parse(existing.state_json).id!==job.id)return json({job:JSON.parse(existing.state_json)});
     try{
       for(let i=0;i<batches.length;i++){
-        const recipients=batches[i].map(person=>purpose==='reminder'?person.email:person.id),scheduledAt=nextParisMorning(i+1);
+        const scheduledAt=nextParisMorning(i+1,new Date(now));
+        const recipients=batches[i];
+        if(eventNotice){
+          const part={count:recipients.length,scheduledAt,status:'preparing',batchId:crypto.randomUUID()};
+          job.batches.push(part);
+          await saveJob(db,job);
+          const result=await brevo(key,'/smtp/email',{method:'POST',body:{
+            sender:{email:sender.email,name:'Héritage Libanais'},replyTo:{email:replyTo},subject:email.subject,htmlContent:email.html,
+            scheduledAt,batchId:part.batchId,messageVersions:recipients.map(({email})=>({to:[{email}]})),
+          },fetchImpl});
+          if(result?.messageIds?.length!==recipients.length)throw failure('Brevo n’a pas confirmé la programmation de tous les e-mails.',502);
+          part.status='scheduled';
+          await saveJob(db,job);
+          continue;
+        }
         const list=await brevo(key,'/contacts/lists',{method:'POST',body:{name:`Mailing Héritage Libanais · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,folderId:1},fetchImpl});
         if(!Number.isSafeInteger(list?.id))throw failure('La liste de diffusion n’a pas été créée.',502);
         const part={listId:list.id,count:recipients.length,scheduledAt,campaignId:null,status:'list_created'};job.batches.push(part);await saveJob(db,job);
         for(let n=0;n<recipients.length;n+=150){
-          const added=await brevo(key,`/contacts/lists/${list.id}/contacts${purpose==='reminder'?'/add':''}`,{method:'POST',body:{[purpose==='reminder'?'emails':'ids']:recipients.slice(n,n+150)},fetchImpl});
+          const added=await brevo(key,`/contacts/lists/${list.id}/contacts/add`,{method:'POST',body:{ids:recipients.slice(n,n+150).map(person=>person.id)},fetchImpl});
           if(added?.contacts?.failure?.length||added?.failure?.length)throw failure('Brevo a refusé certains destinataires.',502);
         }
         part.status='list_ready';await saveJob(db,job);
-        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${purpose==='reminder'?'Rappel':purpose==='invitation'?'Invitation':'La Newsletter'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
+        const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${post.type==='evenement'?EVENT_MAILS[purpose].label:'La Newsletter'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,recipients:{listIds:[list.id]},scheduledAt},fetchImpl});
         if(!Number.isSafeInteger(campaign?.id))throw failure('La campagne Brevo n’a pas été créée.',502);
         part.campaignId=campaign.id;part.status='campaign_created';await saveJob(db,job);
         let detail=await brevo(key,`/emailCampaigns/${campaign.id}?excludeHtmlContent=true`,{fetchImpl});

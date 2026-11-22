@@ -308,7 +308,7 @@ function setForm() {
       ? 'Récit' : state.dossier[key] || '';
   }
   form.elements.contentType.value = contentType(state.dossier);
-  form.elements.eventTitle.value = state.dossier.title || '';
+  form.elements.eventTitle.value = contentType(state.dossier) === 'evenement' ? state.dossier.title || '' : '';
   for (const key of eventKeys) form.elements['event_' + key].value = key === 'speakers' ? (state.dossier.event?.speakers || []).join('\n') : state.dossier.event?.[key] || '';
   form.elements.usePhotos.checked = state.dossier.mediaMode === 'photos';
   updateContentType();
@@ -321,7 +321,7 @@ function readDossier() {
   dossier.contentType = form.elements.contentType.value;
   dossier.event = emptyEvent();
   for (const key of eventKeys) dossier.event[key] = key === 'speakers' ? form.elements['event_' + key].value.split('\n') : form.elements['event_' + key].value;
-  if (dossier.contentType === 'evenement') { dossier.title = form.elements.eventTitle.value.trim() ? form.elements.eventTitle.value : dossier.title; dossier.theme = 'Événement'; }
+  if (dossier.contentType === 'evenement') { dossier.title = form.elements.eventTitle.value; dossier.theme = 'Événement'; }
   dossier.mediaMode = media.length && form.elements.usePhotos.checked ? 'photos' : 'none';
   dossier.media = structuredClone(media);
   return dossier;
@@ -340,6 +340,13 @@ function updateContentType() {
   form.elements.sourceText.placeholder = isEvent ? 'Collez le programme, la description ou le texte de l’affiche.' : 'Collez votre récit ici.';
   if (form.elements.theme.value === '') form.elements.theme.value = 'Récit';
   renderWorkflow();
+  updatePreviewVisibility();
+}
+function updatePreviewVisibility() {
+  const waitingForEvent = form.elements.contentType.value === 'evenement' &&
+    currentProposal()?.basis?.contentType !== 'evenement';
+  $('studio-output').hidden = waitingForEvent;
+  $('studio-workspace').classList.toggle('awaiting-event-preview', waitingForEvent);
 }
 function renderMedia() {
   const list = $('media-list');
@@ -795,6 +802,7 @@ function renderWorkflow() {
 }
 function render() {
   renderWorkflow();
+  updatePreviewVisibility();
   $('proposal-empty').hidden = state.proposals.length > 0;
   $('proposal-area').hidden = state.proposals.length === 0;
   if (state.proposals.length) {
@@ -1206,14 +1214,10 @@ $('wordpress-trash').addEventListener('click',()=>{if(state.draft?.wordpressPost
 $('publications-refresh').addEventListener('click',refreshPublicationList);
 $('prepare-mailing').addEventListener('click',async()=>{
   if(!state.draft?.wordpressPostId)return;
-  mailingLoaded=true;mailingTab('mailing');await mailingRefresh();
-  const id=String(state.draft.wordpressPostId);
-  if([...$('mailing-post').options].some(option=>option.value===id)){
-    $('mailing-post').value=id;
-    $('mailing-intro').value=$('email-intro').value.trim()||state.draft.summary||'';
-    mailingInvalidate();saveMailingDraft();
-    $('mailing-post-note').textContent='Publication sélectionnée. Modifiez l’introduction, puis prévisualisez la Newsletter.';
-  }else $('mailing-post-note').textContent='La publication n’apparaît pas encore dans le catalogue WordPress. Actualisez dans quelques instants.';
+  mailingLoaded=true;
+  mailingTab('mailing');
+  const intro=$('email-intro').value.trim();
+  await mailingRefresh({postId:String(state.draft.wordpressPostId),intro:intro===(state.draft.summary||'').trim()?undefined:intro});
 });
 $('email-preview-button').addEventListener('click', async () => {
   const draft = state.draft;
@@ -1246,29 +1250,151 @@ $('archive').addEventListener('click', () => act(() => archive(state), 'Dossier 
 let mailingLoaded=false;
 let mailingPosts=[];
 let mailingPreview=null;
-let mailingRequestId=null;
 let mailingCanSend=false;
 let mailingSending=false;
 let mailingCheckedRequest=0;
+let mailingCatalogueRequest=0;
+let mailingPreviewController;
+let mailingPreviewTimer;
 const mailingStorageKey = storageKey + '-mailing';
+const mailingFields = {intro:'mailing-intro',subject:'mailing-subject-input',previewText:'mailing-preheader-input'};
+const mailingAudienceLabels = {
+  newsletter:'Abonnés confirmés à la Newsletter',
+  newsletter_unregistered:'Abonnés à la Newsletter non inscrits à cet événement',
+  event_registrants:'Inscrits à cet événement',
+};
+const mailingDrafts = new Map();
+const externalRegistrations = new Map();
+let selectedMailing = {};
+let legacyMailingDraftKey;
+try {
+  selectedMailing = JSON.parse(localStorage.getItem(mailingStorageKey) || '{}') || {};
+  const {drafts,postId,purpose,intro,subject,previewText}=selectedMailing;
+  for(const [key, draft] of Object.entries(drafts || {}))mailingDrafts.set(key,draft);
+  if(!drafts && postId && purpose){
+    legacyMailingDraftKey=postId+':'+purpose;
+    mailingDrafts.set(legacyMailingDraftKey,{intro,subject,previewText});
+  }
+} catch { /* A local draft is optional. */ }
+const mailingPost=()=>mailingPosts.find(post=>post.id===Number($('mailing-post').value));
+const mailingPurpose=()=>$('mailing-purpose').value;
+const mailingDraftKey=()=>$('mailing-post').value+':'+mailingPurpose();
+const mailingUsesExternal=()=>!$('mailing-external').hidden;
 function saveMailingDraft() {
-  try {
-    localStorage.setItem(mailingStorageKey, JSON.stringify({postId:$('mailing-post').value,purpose:$('mailing-purpose').value,intro:$('mailing-intro').value,subject:$('mailing-subject-input').value,previewText:$('mailing-preheader-input').value}));
-  } catch { /* The open draft remains editable. */ }
+  selectedMailing={postId:$('mailing-post').value,purpose:mailingPurpose(),drafts:Object.fromEntries(mailingDrafts)};
+  try { localStorage.setItem(mailingStorageKey, JSON.stringify(selectedMailing)); }
+  catch { /* The open draft remains editable. */ }
 }
-function mailingInvalidate(){mailingPreview=null;mailingRequestId=null;$('mailing-preview-panel').hidden=true;$('mailing-confirm').checked=false;$('mailing-send').disabled=true;$('mailing-preview-status').textContent='';}
-function mailingOverrides(){
-  const subject=$('mailing-subject-input').value.trim(),previewText=$('mailing-preheader-input').value.trim();
-  return {purpose:$('mailing-purpose').value,...(subject?{subject}:{}),...(previewText?{previewText}:{})};
+function updateMailingSend() {
+  $('mailing-send').disabled=!mailingCanSend||mailingSending||!mailingPreview||
+    Boolean(mailingPreview.audience.problem)||!$('mailing-confirm').checked;
 }
-function mailingPurposeVisibility(){
-  const event=mailingPosts.find(post=>post.id===Number($('mailing-post').value))?.type==='evenement';
-  const csv=$('mailing-registrations-csv');
-  const postId=Number($('mailing-post').value);
-  csv.hidden=studioAccess.role!=='owner'||!event||postId<=0;
-  if(!csv.hidden)csv.href='/api/mailing/registrations.csv?postId='+postId;
+function mailingInvalidate() {
+  clearTimeout(mailingPreviewTimer);
+  mailingPreviewController?.abort();
+  mailingPreview=null;
+  $('mailing-preview-panel').hidden=true;
+  $('mailing-confirm').checked=false;
+  $('mailing-preview-status').textContent='';
+  $('mailing-preview').disabled=!mailingPost();
+  updateMailingSend();
+}
+function mailingInput() {
+  const input={postId:mailingPost().id,purpose:mailingPurpose()};
+  const draft=mailingDrafts.get(mailingDraftKey());
+  for(const key of Object.keys(mailingFields)){
+    if(draft?.[key])input[key]=draft[key];
+  }
+  if(mailingUsesExternal() && $('mailing-external-complete').checked){
+    input.externalRegistrations=$('mailing-external-emails').value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  }
+  return input;
+}
+function loadMailingEditor() {
+  const post=mailingPost();
+  const event=post?.type==='evenement';
   $('mailing-purpose-field').hidden=!event;
-  if(!event)$('mailing-purpose').value='announcement';
+  $('mailing-external').hidden=post?.registrationSource!=='external'||['invitation','announcement'].includes(mailingPurpose());
+  const external=externalRegistrations.get(post?.id);
+  $('mailing-external-emails').value=external?.emails||'';
+  $('mailing-external-complete').checked=Boolean(external?.complete);
+  const csv=$('mailing-registrations-csv');
+  csv.hidden=studioAccess.role!=='owner'||post?.registrationSource!=='studio';
+  if(!csv.hidden)csv.href='/api/mailing/registrations.csv?postId='+post.id;
+  const draft=mailingDrafts.get(mailingDraftKey());
+  for(const [key,id] of Object.entries(mailingFields)){
+    $(id).disabled=!post;
+    $(id).value=draft?.[key]||'';
+    $(id).placeholder='';
+  }
+}
+function selectMailingPost(purpose, intro) {
+  const post=mailingPost();
+  for(const option of $('mailing-purpose').options)option.disabled=Boolean(post?.past)&&option.value!=='thanks';
+  $('mailing-purpose').value=post?.past?'thanks':post?.type==='evenement'
+    ? ([...$('mailing-purpose').options].some(option=>option.value===purpose)?purpose:'invitation')
+    : 'announcement';
+  if(post && legacyMailingDraftKey?.startsWith(post.id+':')){
+    const legacy=mailingDrafts.get(legacyMailingDraftKey);
+    // The previous editor stored the prefilled invitation when switching models.
+    if(post.type==='evenement' && [post.intro,'Nous avons le plaisir de vous inviter à cette rencontre. Retrouvez les informations pratiques sur le site.'].includes(legacy.intro)){
+      delete legacy.intro;
+    }
+    legacyMailingDraftKey=undefined;
+  }
+  if(intro && post?.type==='recit'){
+    const key=mailingDraftKey();
+    mailingDrafts.set(key,{...mailingDrafts.get(key),intro});
+  }
+  loadMailingEditor();
+  saveMailingDraft();
+  $('mailing-post-note').textContent=post?.type==='evenement'?post.date:'';
+  scheduleMailingPreview();
+}
+function scheduleMailingPreview(delay=0) {
+  mailingInvalidate();
+  $('mailing-audience').textContent=mailingPost()?'Vérification des destinataires…':'Choisissez une publication.';
+  if(!mailingPost())return;
+  if(delay)mailingPreviewTimer=setTimeout(loadMailingPreview,delay);
+  else void loadMailingPreview();
+}
+async function loadMailingPreview() {
+  const controller=new AbortController();
+  mailingPreviewController=controller;
+  const input=mailingInput();
+  $('mailing-preview').disabled=true;
+  $('mailing-preview-status').textContent='Préparation de l’aperçu…';
+  try{
+    const result=await mailingJson('/api/mailing/preview',{
+      method:'POST',body:JSON.stringify(input),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)]),
+    });
+    if(controller.signal.aborted)return;
+    mailingPreview={...result,input,requestId:crypto.randomUUID()};
+    const defaults={intro:result.intro,subject:result.email.subject,previewText:result.email.previewText};
+    for(const [key,id] of Object.entries(mailingFields)){
+      if(input[key])continue;
+      $(id).placeholder=defaults[key];
+      if(document.activeElement!==$(id))$(id).value=defaults[key];
+    }
+    const {audience}=result;
+    const label=mailingAudienceLabels[audience.kind];
+    const count=audience.count===null?'':` · ${audience.count} destinataire(s)`;
+    const excluded=audience.kind==='newsletter_unregistered'&&audience.registeredCount!==null
+      ? ` · ${audience.registeredCount} inscription(s) vérifiée(s)` : '';
+    $('mailing-audience').textContent=label+count+excluded+(audience.problem?' — '+audience.problem:'');
+    $('mailing-subject').textContent=result.email.subject;
+    $('mailing-preheader').textContent=result.email.previewText;
+    $('mailing-preview-frame').srcdoc=result.email.html;
+    $('mailing-preview-panel').hidden=false;
+    $('mailing-preview-status').textContent='';
+    updateMailingSend();
+  }catch(error){
+    if(controller.signal.aborted)return;
+    $('mailing-preview-status').textContent=error.message;
+    $('mailing-audience').textContent='Destinataires à vérifier.';
+  }finally{
+    if(!controller.signal.aborted)$('mailing-preview').disabled=false;
+  }
 }
 function mailingTab(name){
   const mailing=name==='mailing';
@@ -1284,7 +1410,9 @@ function mailingTab(name){
 }
 async function mailingJson(path,options={}){
   const response=await fetch(path,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
-  const result=await response.json();if(!response.ok)throw new Error(result.error||'Cette action est momentanément indisponible.');return result;
+  const result=await response.json();
+  if(!response.ok)throw Object.assign(new Error(result.error||result.job?.error||'Cette action est momentanément indisponible.'),{job:result.job});
+  return result;
 }
 async function refreshMailingConnection(){
   const request = ++mailingCheckedRequest;
@@ -1312,54 +1440,51 @@ async function refreshMailingConnection(){
       quota_exhausted: 'Le quota quotidien Brevo est atteint. Réessayez après son renouvellement.'
     };
     status.textContent = (messages[result.reason] || (result.connected ? 'Brevo est connecté.' : 'La connexion à Brevo reste à configurer.')) + checkedTime(result.lastCheckedAt);
-    $('mailing-audience').textContent = Number.isInteger(result.eligible)
-      ? `${result.eligible} abonné(s) confirmé(s) éligible(s).` + (result.senderEmail ? ' Expéditeur : ' + result.senderEmail + '.' : '')
-      : 'Le nombre d’abonnés n’est pas disponible. Vous pouvez préparer l’aperçu.';
     $('mailing-send-status').textContent = studioAccess.canScheduleMailing ? '' : 'Votre compte peut préparer le mail. La programmation est réservée à l’administrateur.';
-    $('mailing-send').disabled = !mailingCanSend || !mailingPreview || mailingSending;
+    updateMailingSend();
   } catch {
     if (request !== mailingCheckedRequest) return;
     $('mailing-setup').hidden = true;
     status.textContent = 'La connexion à Brevo n’a pas pu être vérifiée. Vous pouvez préparer l’aperçu.';
-    $('mailing-audience').textContent = 'Le nombre d’abonnés n’est pas disponible.';
   } finally {
     if (request === mailingCheckedRequest) check.disabled = false;
   }
 }
-async function mailingRefresh(){
+async function mailingRefresh({postId,intro}={}){
+  const request=++mailingCatalogueRequest;
   $('mailing-post-note').textContent='Lecture des publications…';
-  const connection = refreshMailingConnection();
+  void refreshMailingConnection();
   try {
-    const result = await mailingJson('/api/mailing/content',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    const result=await mailingJson('/api/mailing/content?includePastEvents=1',{cache:'no-store',signal:AbortSignal.timeout(12000)});
+    if(request!==mailingCatalogueRequest)return;
     mailingPosts=result.posts||[];
-    const select=$('mailing-post');select.replaceChildren(new Option('Choisir une publication',''));
-    for(const [type,label] of [['evenement','Événements à venir'],['recit','Récits']]){
+    const select=$('mailing-post');
+    const preferred=postId||selectedMailing.postId||'';
+    select.replaceChildren(new Option('Choisir une publication',''));
+    const groups=[
+      ['Événements à venir',post=>post.type==='evenement'&&!post.past],
+      ['Événements passés',post=>post.type==='evenement'&&post.past],
+      ['Récits',post=>post.type==='recit'],
+    ];
+    for(const [label,matches] of groups){
       const group=document.createElement('optgroup');
       group.label=label;
-      for(const post of mailingPosts.filter(item=>item.type===type))group.append(new Option(post.title,String(post.id)));
+      for(const post of mailingPosts.filter(matches))group.append(new Option(post.title,String(post.id)));
       if(group.children.length)select.append(group);
     }
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(mailingStorageKey) || 'null'); } catch {}
-    if (saved && mailingPosts.some(post => String(post.id) === saved.postId)) {
-      select.value = saved.postId;
-      $('mailing-intro').value = typeof saved.intro === 'string' ? saved.intro : '';
-      $('mailing-subject-input').value = typeof saved.subject === 'string' ? saved.subject : '';
-      $('mailing-preheader-input').value = typeof saved.previewText === 'string' ? saved.previewText : '';
-      $('mailing-purpose').value = ['invitation','reminder'].includes(saved.purpose) ? saved.purpose : 'announcement';
-    } else if (mailingPreview) {
-      mailingInvalidate();
-    }
-    mailingPurposeVisibility();
-    $('mailing-post-note').textContent=mailingPosts.length?`${mailingPosts.filter(x=>x.type==='recit').length} récit(s) et ${mailingPosts.filter(x=>x.type==='evenement').length} événement(s) à venir publiés.`:'Aucune publication disponible pour un envoi.';
-  } catch(error) { $('mailing-post-note').textContent = error.message; }
-  await connection;
+    select.value=mailingPosts.some(post=>String(post.id)===preferred)?preferred:'';
+    selectMailingPost(postId?undefined:selectedMailing.purpose,intro);
+    if(!mailingPosts.length)$('mailing-post-note').textContent='Aucune publication disponible pour un envoi.';
+    else if(postId&&!select.value)$('mailing-post-note').textContent='Cette publication n’apparaît pas encore dans WordPress.';
+  }catch(error){
+    if(request===mailingCatalogueRequest)$('mailing-post-note').textContent=error.message;
+  }
 }
 function mailingShowJob(job){
   const box=$('mailing-job');box.replaceChildren();box.hidden=false;
   const title=document.createElement('strong');title.textContent=job.status==='scheduled'?'Envoi programmé dans Brevo':'Envoi à vérifier dans Brevo';box.append(title);
   const content=document.createElement('p');content.textContent=job.title||'';box.append(content);
-  for(const part of job.batches||[]){const line=document.createElement('p');line.textContent=`${part.count} destinataire(s) · ${new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'})} · campagne Brevo ${part.campaignId||'en préparation'} · ${part.status}`;box.append(line);}
+  for(const part of job.batches||[]){const line=document.createElement('p');line.textContent=`${part.count} destinataire(s) · ${new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'})}${part.campaignId?' · campagne Brevo '+part.campaignId:''}`;box.append(line);}
   if(job.error){const error=document.createElement('p');error.textContent=job.error;box.append(error);}
 }
 $('tab-editor').addEventListener('click',()=>mailingTab('editor'));
@@ -1488,70 +1613,98 @@ $('instagram-publish').addEventListener('click',async()=>{
 $('home-brevo-link').addEventListener('click',event=>{event.preventDefault();$('tab-mailing').click();});
 $('home-instagram-link').addEventListener('click',event=>{event.preventDefault();$('tab-instagram').click();});
 $('tab-mailing').addEventListener('click',()=>mailingTab('mailing'));
-$('mailing-automation-preview').addEventListener('click', async () => {
-  const button = $('mailing-automation-preview');
-  const subject = $('mailing-automation-subject');
-  const frame = $('mailing-automation-frame');
-  button.disabled = true;
-  frame.hidden = true;
-  subject.textContent = 'Chargement de l’aperçu…';
+let automationPreviewRequest=0;
+async function loadAutomationPreview() {
+  const request=++automationPreviewRequest;
+  const subject=$('mailing-automation-subject');
+  const frame=$('mailing-automation-frame');
+  frame.hidden=true;
+  subject.textContent='Chargement de l’aperçu…';
   try {
-    const kind = $('mailing-automation-template').value;
-    const preview = await mailingJson('/api/mailing/automation-preview?kind=' + encodeURIComponent(kind));
-    subject.textContent = preview.subject;
-    frame.srcdoc = preview.html;
-    frame.hidden = false;
-  } catch (error) {
-    subject.textContent = error.message;
-  } finally {
-    button.disabled = false;
+    const kind=$('mailing-automation-template').value;
+    const preview=await mailingJson('/api/mailing/automation-preview?kind='+encodeURIComponent(kind));
+    if(request!==automationPreviewRequest)return;
+    subject.textContent=preview.subject;
+    frame.srcdoc=preview.html;
+    frame.hidden=false;
+  }catch(error){
+    if(request===automationPreviewRequest)subject.textContent=error.message;
   }
+}
+$('mailing-automation-preview').addEventListener('click',loadAutomationPreview);
+$('mailing-automation-template').addEventListener('change',loadAutomationPreview);
+$('mailing-automation').addEventListener('toggle',event=>{
+  if(event.target.open && !automationPreviewRequest)void loadAutomationPreview();
 });
-$('mailing-refresh').addEventListener('click',mailingRefresh);
-$('mailing-recheck').addEventListener('click',refreshMailingConnection);
-$('mailing-post').addEventListener('change',()=>{
-  mailingInvalidate();const post=mailingPosts.find(x=>x.id===Number($('mailing-post').value));
-  $('mailing-purpose').value=post?.type==='evenement'?'invitation':'announcement';mailingPurposeVisibility();
-  $('mailing-intro').value=post?.intro||(post?.type==='evenement'?'Nous avons le plaisir de vous inviter à cette rencontre. Retrouvez les informations pratiques sur le site.':'');
-  $('mailing-subject-input').value='';$('mailing-preheader-input').value='';
+$('mailing-refresh').addEventListener('click',()=>void mailingRefresh());
+$('mailing-recheck').addEventListener('click',async()=>{
+  await refreshMailingConnection();
+  if(mailingPost())scheduleMailingPreview();
+});
+$('mailing-post').addEventListener('change',()=>selectMailingPost());
+$('mailing-purpose').addEventListener('change',()=>{
+  loadMailingEditor();
   saveMailingDraft();
-  $('mailing-post-note').textContent=post?(post.type==='evenement'?`Événement du ${post.date}. L’envoi est réservé aux dates à venir.`:`Récit publié le ${new Date(post.publishedAt).toLocaleDateString('fr-FR')}.`):'Choisissez une publication.';
+  scheduleMailingPreview();
 });
-$('mailing-purpose').addEventListener('change',()=>{mailingInvalidate();saveMailingDraft();});
-$('mailing-intro').addEventListener('input',()=>{mailingInvalidate();saveMailingDraft();});
-for(const id of ['mailing-subject-input','mailing-preheader-input'])$(id).addEventListener('input',()=>{mailingInvalidate();saveMailingDraft();});
+for(const [key,id] of Object.entries(mailingFields))$(id).addEventListener('input',event=>{
+  const draftKey=mailingDraftKey();
+  mailingDrafts.set(draftKey,{...mailingDrafts.get(draftKey),[key]:event.target.value.trim()});
+  saveMailingDraft();
+  scheduleMailingPreview(300);
+});
+function saveExternalRegistrations(){
+  externalRegistrations.set(mailingPost().id,{
+    emails:$('mailing-external-emails').value,
+    complete:$('mailing-external-complete').checked,
+  });
+}
+$('mailing-external-emails').addEventListener('input',()=>{
+  const complete=$('mailing-external-complete');
+  const wasComplete=complete.checked;
+  complete.checked=false;
+  saveExternalRegistrations();
+  if(wasComplete)scheduleMailingPreview();
+});
+$('mailing-external-complete').addEventListener('change',()=>{
+  saveExternalRegistrations();
+  scheduleMailingPreview();
+});
+$('mailing-confirm').addEventListener('change',updateMailingSend);
 $('mailing-connect').addEventListener('click',async()=>{
   if (!studioAccess.canManageConnections) return;
   const button=$('mailing-connect');button.disabled=true;$('mailing-connection-status').textContent='Vérification de la clé…';
-  try{await mailingJson('/api/mailing/setup',{method:'POST',body:JSON.stringify({apiKey:$('mailing-api-key').value})});$('mailing-api-key').value='';await refreshMailingConnection();}
+  try{await mailingJson('/api/mailing/setup',{method:'POST',body:JSON.stringify({apiKey:$('mailing-api-key').value})});$('mailing-api-key').value='';await refreshMailingConnection();if(mailingPost())scheduleMailingPreview();}
   catch(e){$('mailing-connection-status').textContent=e.message;}
   finally{button.disabled=false;}
 });
-$('mailing-preview').addEventListener('click',async()=>{
-  const postId=Number($('mailing-post').value),intro=$('mailing-intro').value.trim();
-  if(!postId)return $('mailing-preview-status').textContent='Choisissez d’abord une publication.';
-  mailingInvalidate();const button=$('mailing-preview');button.disabled=true;$('mailing-preview-status').textContent='Préparation de l’aperçu…';
-  try{
-    mailingPreview=await mailingJson('/api/mailing/preview',{method:'POST',body:JSON.stringify({postId,intro,...mailingOverrides()})});
-    mailingRequestId=crypto.randomUUID();
-    $('mailing-subject').textContent=mailingPreview.email.subject;$('mailing-preheader').textContent=mailingPreview.email.previewText;
-    $('mailing-preview-frame').srcdoc=mailingPreview.email.html;$('mailing-preview-panel').hidden=false;
-    $('mailing-preview-status').textContent=mailingPreview.registeredCount===null?'Aperçu prêt. Aucun e-mail n’a encore été programmé.':`${mailingPreview.registeredCount} inscrit(s) à cet événement. Aucun e-mail programmé.`;
-    $('mailing-send').disabled=!mailingCanSend||mailingPreview.registeredCount===0;
-  }catch(e){$('mailing-preview-status').textContent=e.message;}
-  finally{button.disabled=false;}
-});
+$('mailing-preview').addEventListener('click',()=>scheduleMailingPreview());
 $('mailing-send').addEventListener('click',async()=>{
-  if (!mailingCanSend || mailingSending) return;
-  if(!mailingPreview||!$('mailing-confirm').checked)return $('mailing-send-status').textContent='Confirmez la relecture avant de programmer.';
-  mailingSending = true;
-  const button=$('mailing-send');button.disabled=true;$('mailing-send-status').textContent='Création des listes et programmation dans Brevo…';
+  const preview=mailingPreview;
+  if(!mailingCanSend||mailingSending||!preview||preview.audience.problem||!$('mailing-confirm').checked)return;
+  mailingSending=true;
+  updateMailingSend();
+  $('mailing-send-status').textContent='Programmation dans Brevo…';
   try{
-    const job=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({postId:mailingPreview.post.id,intro:$('mailing-intro').value.trim(),...mailingOverrides(),contentHash:mailingPreview.contentHash,requestId:mailingRequestId,confirmed:true})});
-    mailingShowJob(job.job);$('mailing-send-status').textContent=job.job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
-  }catch(e){$('mailing-send-status').textContent=e.message;try{const jobs=await mailingJson('/api/mailing/jobs');const job=jobs.jobs.find(x=>x.contentHash===mailingPreview?.contentHash);if(job)mailingShowJob(job);}catch{}}
-  finally { mailingSending = false; mailingPreview = null; $('mailing-confirm').checked = false; }
+    const {job}=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({
+      ...preview.input,contentHash:preview.contentHash,requestId:preview.requestId,confirmed:true,
+    })});
+    mailingShowJob(job);
+    $('mailing-send-status').textContent=job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
+    if(mailingPreview===preview)mailingPreview=null;
+  }catch(error){
+    $('mailing-send-status').textContent=error.message;
+    if(error.job){
+      mailingShowJob(error.job);
+      if(mailingPreview===preview)mailingPreview=null;
+    }
+  }finally{
+    mailingSending=false;
+    $('mailing-confirm').checked=false;
+    updateMailingSend();
+  }
 });
+$('mailing-preview').disabled=true;
 $('correction-request').value=state.correctionRequest||'';
 setForm();
 $('main').inert=false;
