@@ -29,3 +29,12 @@ test('saved statuses map to four workflow steps', () => {
   assert.deepEqual(STATUSES.map(workflowStepIndex), [0, 0, 1, 1, 2, 2, 3, 3, 3, 3]);
   assert.equal(workflowStepIndex(undefined), 0);
 });
+
+test('event publishing keeps only the selected image without removing images from the working dossier',async()=>{
+  const {publicationMedia}=await import('../public/private-studio/studio-model.mjs');
+  const dossier={contentType:'evenement',mediaMode:'photos',media:[{id:'a'},{id:'b'}],eventImageId:'b'};
+  assert.deepEqual(publicationMedia(dossier).map(item=>item.id),['b']);
+  assert.deepEqual(publicationMedia({...dossier,eventImageId:null}),[]);
+  assert.deepEqual(publicationMedia({...dossier,contentType:'recit'}).map(item=>item.id),['a','b']);
+  assert.equal(dossier.media.length,2);
+});

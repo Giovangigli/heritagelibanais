@@ -23,7 +23,7 @@ export function workflowStepIndex(status) {
 
 export const emptyEvent = () => ({
   startDate: '', endDate: '', startTime: '', endTime: '', timezone: '', venue: '',
-  address: '', city: '', speakers: [], registrationUrl: '', price: '', contact: '', missingFields: [],
+  address: '', city: '', speakers: [], registrationMode: 'none', registrationUrl: '', price: '', contact: '', missingFields: [],
 });
 
 export const emptyState = () => ({
@@ -56,6 +56,15 @@ const sourceContent = (value) => {
 };
 
 export const contentType = (dossier) => dossier?.contentType === 'evenement' || (!dossier?.contentType && dossier?.theme === 'Événement') ? 'evenement' : 'recit';
+
+export function publicationMedia(dossier) {
+  if (dossier.mediaMode !== 'photos') return [];
+  const available = (dossier.media || []).filter(item => item.admis !== false);
+  if (contentType(dossier) !== 'evenement') return available;
+  return Object.hasOwn(dossier, 'eventImageId')
+    ? available.filter(item => item.id === dossier.eventImageId).slice(0,1)
+    : available.slice(0,1);
+}
 
 export function eventDetails(event = {}) {
   return [
@@ -219,7 +228,7 @@ export function validate(state, reviewer) {
     contentType: contentType(proposal.basis), event: snapshot(proposal.output.event || proposal.basis.event || null),
     slides: snapshot(proposal.output.slides || []), checks: snapshot(proposal.output.checks || []),
     theme: proposal.basis.theme, place: proposal.basis.place, date: proposal.basis.date,
-    cta: proposal.basis.cta, media: snapshot(proposal.basis.media),
+    cta: proposal.basis.cta, media: snapshot(contentType(proposal.basis) === 'evenement' ? publicationMedia(proposal.basis) : proposal.basis.media),
     sources: proposal.basis.sources, facts: proposal.basis.facts,
     reviewer: clean(reviewer), validatedAt: at,
   };

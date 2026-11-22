@@ -105,7 +105,15 @@ async function resolvedEmail(input,fetchImpl){
   return {post,email,purpose,intro,kind:isEvent?model.audience:'newsletter'};
 }
 
-async function eventEmails(db,workspaceId,post,input){
+async function registrationPage(post,afterEmail,{db,workspaceUserId,listWordPressRegistrations}){
+  if(post.registrationSource==='wordpress'){
+    if(!listWordPressRegistrations)throw failure('La liste des inscrits WordPress est indisponible.',503);
+    return listWordPressRegistrations(post.id,afterEmail);
+  }
+  return listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId:post.id,afterEmail,limit:500});
+}
+
+async function eventEmails(post,input,options){
   if(post.registrationSource==='external'){
     const rows=input.externalRegistrations;
     if(rows===undefined)return null;
@@ -115,20 +123,21 @@ async function eventEmails(db,workspaceId,post,input){
     }
     return [...new Set(rows.map(emailKey))].sort();
   }
+  if(post.registrationSource==='none')throw failure('Cet événement ne propose pas d’inscription.');
   const emails=[];
   let afterEmail='';
   for(;;){
-    const rows=await listEventRegistrations(db,{workspaceId,eventPostId:post.id,afterEmail,limit:500});
+    const rows=await registrationPage(post,afterEmail,options);
     emails.push(...rows.map(row=>emailKey(row.email)));
     if(rows.length<500)return [...new Set(emails)].sort();
     afterEmail=rows.at(-1).email;
   }
 }
 
-async function mailingAudience({post,kind},input,{db,workspaceUserId,connectionKey,fetchImpl}){
+async function mailingAudience({post,kind},input,{db,workspaceUserId,connectionKey,fetchImpl,listWordPressRegistrations}){
   let registrations=null;
   if(kind!=='newsletter'){
-    registrations=await eventEmails(db,workspaceUserId,post,input);
+    registrations=await eventEmails(post,input,{db,workspaceUserId,listWordPressRegistrations});
     if(registrations===null)return {people:null,registeredCount:null,problem:'Renseignez la liste complète des inscrits pour vérifier cet envoi.'};
   }
   const registeredCount=registrations?.length??null;
@@ -159,7 +168,7 @@ function mailingHash({post,email,purpose,kind},people){
 async function hash(value){const bytes=new TextEncoder().encode(JSON.stringify(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 async function saveJob(db,job){await db.prepare('UPDATE studio_mailing_jobs SET state_json = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(job),new Date().toISOString(),job.id).run();}
 
-export async function handleMailingRequest(path,request,env,user,{db,bodyJson,encryptToken,decryptToken,fetchImpl=fetch,access={
+export async function handleMailingRequest(path,request,env,user,{db,bodyJson,encryptToken,decryptToken,fetchImpl=fetch,listWordPressRegistrations,access={
   role:'personal',workspaceUserId:user.userId,canManageConnections:true,canScheduleMailing:true,
 }}={}){
   const {role,workspaceUserId,canManageConnections,canScheduleMailing}=access;
@@ -179,6 +188,8 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(role!=='owner')throw failure('L’export est réservé au propriétaire du Studio.',403);
     const eventPostId=Number(new URL(request.url).searchParams.get('postId'));
     if(!Number.isSafeInteger(eventPostId)||eventPostId<=0)throw failure('Choisissez un événement WordPress.');
+    const post=(await fetchPublishedContent(fetchImpl,{includePastEvents:true})).find(event=>event.id===eventPostId);
+    if(!post||!['studio','wordpress'].includes(post.registrationSource))throw failure('Aucune liste d’inscrits accessible pour cet événement.',404);
     const lines=['Nom,Email,Inscription UTC'];
     const cell=value=>{
       const text=String(value??'');
@@ -186,7 +197,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     };
     let afterEmail='';
     for(;;){
-      const page=await listEventRegistrations(db,{workspaceId:workspaceUserId,eventPostId,afterEmail,limit:500});
+      const page=await registrationPage(post,afterEmail,{db,workspaceUserId,listWordPressRegistrations});
       for(const row of page)lines.push([row.name,row.email,row.created_at].map(cell).join(','));
       if(page.length<500)break;
       afterEmail=page.at(-1).email;
@@ -238,7 +249,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const draft=await resolvedEmail(input,fetchImpl);
     let recipients;
     try{
-      recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey,fetchImpl});
+      recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey,fetchImpl,listWordPressRegistrations});
     }catch(error){
       recipients={people:null,registeredCount:null,problem:error.status===400?error.message:'Le Studio n’a pas pu vérifier les destinataires.'};
     }
@@ -269,7 +280,7 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const plan=freeCampaignPlan(account);
     if(!plan)throw failure('Le forfait Free Brevo a changé. Vérifiez-le avant l’envoi.',409);
     if(quotaExhausted(plan))throw failure('Le quota quotidien Brevo est atteint. Réessayez après son renouvellement.',409);
-    const recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey:()=>key,fetchImpl});
+    const recipients=await mailingAudience(draft,input,{db,workspaceUserId,connectionKey:()=>key,fetchImpl,listWordPressRegistrations});
     const problem=audienceProblem(draft,recipients);
     if(problem)throw failure(problem,409);
     const {people}=recipients;

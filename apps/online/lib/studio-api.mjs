@@ -5,8 +5,8 @@ import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
 import {handleInstagramRequest} from './instagram-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
-import {validate} from '../public/private-studio/studio-model.mjs';
-import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
+import {publicationMedia,validate} from '../public/private-studio/studio-model.mjs';
+import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken,verifyWordPressEventPlugin,wordpressEventRegistrations} from './wordpress-publication.mjs';
 const WEBHOOK='https://giovangigli.app.n8n.cloud/webhook/heritage-studio-draft';
 const MAX_BODY=12*1024*1024;
 const encoder=new TextEncoder();
@@ -160,8 +160,11 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       const prior=await db.prepare('SELECT post_id,url,status FROM studio_wordpress_publications WHERE slug = ? AND user_id = ?').bind(slug,access.workspaceUserId).first();
       if(prior?.status==='trash')throw error('Cette version a été retirée du site. Créez une nouvelle version avant de republier.',409);
       const images=[];
-      if(!prior?.post_id&&proposal.basis.mediaMode==='photos'){
-        for(const item of (proposal.basis.media||[]).filter(entry=>entry.admis!==false)){
+      let credential;
+      if(!prior?.post_id){
+        credential=await wordpressConnection(env,access);
+        if(proposal.output.siteEvent)await verifyWordPressEventPlugin(credential,fetchImpl);
+        for(const item of publicationMedia(proposal.basis)){
           if(!item.id||!item.credit?.trim()||!item.rights?.trim())throw error('Complétez le crédit et les droits de chaque image avant publication.',409);
           const object=await env.BUCKET?.get(access.workspaceUserId+'/media/'+item.id);
           if(!object)throw error('Une image du dossier est introuvable dans le stockage privé.',409);
@@ -172,7 +175,7 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
           images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit:item.credit});
         }
       }
-      const post=prior?.post_id?{id:prior.post_id,url:prior.url,status:'publish'}:await publishWordPressPost(await wordpressConnection(env,access),proposal,slug,fetchImpl,images);
+      const post=prior?.post_id?{id:prior.post_id,url:prior.url,status:'publish'}:await publishWordPressPost(credential,proposal,slug,fetchImpl,images);
       await db.prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET post_id=excluded.post_id,url=excluded.url,status=excluded.status').bind(slug,access.workspaceUserId,post.id,proposal.output.title,proposal.output.contentType||proposal.basis.contentType||'recit',post.url,'publish',new Date().toISOString()).run();
       next.draft={...next.draft,localSimulation:false,wordpressStatus:'publish',wordpressPostId:post.id,wordpressUrl:post.url,wordpressSlug:slug};
       next.status='Publié';
@@ -223,7 +226,10 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       return json({post,state:null,revision:null});
     }
     if(path.startsWith('/api/mailing/')){
-      const result=await handleMailingRequest(path,request,env,user,{db:database(env),bodyJson,encryptToken,decryptToken,fetchImpl,access});
+      const listWordPressRegistrations=async (eventId,afterEmail)=>wordpressEventRegistrations(
+        await wordpressConnection(env,access),eventId,afterEmail,fetchImpl,
+      );
+      const result=await handleMailingRequest(path,request,env,user,{db:database(env),bodyJson,encryptToken,decryptToken,fetchImpl,access,listWordPressRegistrations});
       if(result)return result;
     }
     if(path.startsWith('/api/instagram/')){

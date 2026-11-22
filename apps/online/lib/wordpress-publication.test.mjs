@@ -71,3 +71,25 @@ test('site application password verifies the user and posts, then publishes and 
   assert.equal(JSON.parse(calls.at(-1).options.body).status,'publish');
   assert.equal(calls.length,6);
 });
+
+test('the site event page uses one image and the editor’s explicit registration choice',async()=>{
+  const {renderEventPage}=await import('../public/private-studio/studio-event-page.mjs');
+  const event={startDate:'2026-11-28',startTime:'16:00',venue:'Paris',registrationMode:'site'};
+  const proposal={basis:{contentType:'evenement',sourceText:'Programme & description',event},output:{contentType:'evenement',siteEvent:true,title:'Rencontre',event}};
+  const images=[{id:1,url:'https://heritage-libanais.fr/affiche.png'},{id:2,url:'https://heritage-libanais.fr/vieux.jpg'}];
+  const post=wordpressPostFromProposal(proposal,'studio-123456789012345678901234',images);
+  assert.match(post.content,/<h1>Rencontre<\/h1>/);
+  assert.match(post.content,/Programme &amp; description/);
+  assert.match(post.content,/\[hl_event_registration\]/);
+  assert.doesNotMatch(post.content,/vieux\.jpg/);
+  const preview=renderEventPage(proposal,images[0],{preview:true});
+  assert.match(preview,/Confirmer mon inscription/);
+  assert.doesNotMatch(preview,/\[hl_event_registration\]/);
+  for(const mode of ['none','external']){
+    event.registrationMode=mode;
+    event.registrationUrl='https://example.org/places';
+    const content=wordpressPostFromProposal(proposal,'studio-123456789012345678901234').content;
+    assert.doesNotMatch(content,/\[hl_event_registration\]/);
+    assert.equal(content.includes('href="https://example.org/places"'),mode==='external');
+  }
+});

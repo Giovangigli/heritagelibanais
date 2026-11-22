@@ -1,4 +1,5 @@
-import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
+import {renderEventPage} from './studio-event-page.mjs';
+import { workflowStepIndex, emptyState, emptyEvent, contentType, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
 
@@ -247,7 +248,9 @@ async function restoreSavedMedia() {
     } catch { /* Missing files remain visible as images to reattach. */ }
   }));
   if(!session.isEpochCurrent(epoch))return;
-  renderMedia();updateGaps();if(state.proposals.length){renderSlide();renderCardEditor();updateProposalGaps(currentProposal());}
+  renderMedia();
+  updateGaps();
+  if(state.proposals.length)render();
 }
 function feedback(message, error = false, id = 'message') {
   const target = $(id);
@@ -308,9 +311,9 @@ function setForm() {
       ? 'Récit' : state.dossier[key] || '';
   }
   form.elements.contentType.value = contentType(state.dossier);
-  form.elements.eventTitle.value = contentType(state.dossier) === 'evenement' ? state.dossier.title || '' : '';
   for (const key of eventKeys) form.elements['event_' + key].value = key === 'speakers' ? (state.dossier.event?.speakers || []).join('\n') : state.dossier.event?.[key] || '';
-  form.elements.usePhotos.checked = state.dossier.mediaMode === 'photos';
+  form.elements.event_registrationMode.value = state.dossier.event?.registrationMode || (state.dossier.event?.registrationUrl ? 'external' : 'none');
+  form.elements.usePhotos.checked = state.dossier.storyUsesPhotos ?? state.dossier.mediaMode === 'photos';
   updateContentType();
   $('media-section').hidden = media.length === 0;
   renderMedia();
@@ -321,34 +324,62 @@ function readDossier() {
   dossier.contentType = form.elements.contentType.value;
   dossier.event = emptyEvent();
   for (const key of eventKeys) dossier.event[key] = key === 'speakers' ? form.elements['event_' + key].value.split('\n') : form.elements['event_' + key].value;
-  if (dossier.contentType === 'evenement') { dossier.title = form.elements.eventTitle.value; dossier.theme = 'Événement'; }
-  dossier.mediaMode = media.length && form.elements.usePhotos.checked ? 'photos' : 'none';
+  dossier.storyUsesPhotos = form.elements.usePhotos.checked;
+  if (dossier.contentType === 'evenement') {
+    dossier.theme = 'Événement';
+    dossier.eventImageId = $('event-image').value || null;
+    dossier.mediaMode = dossier.eventImageId ? 'photos' : 'none';
+  } else {
+    dossier.mediaMode = media.length && dossier.storyUsesPhotos ? 'photos' : 'none';
+  }
   dossier.media = structuredClone(media);
   return dossier;
 }
 function updateContentType() {
   const isEvent = form.elements.contentType.value === 'evenement';
   $('event-fields').hidden = !isEvent;
-  for (const field of $('event-fields').querySelectorAll('input, textarea')) field.disabled = !isEvent;
+  for (const field of $('event-fields').querySelectorAll('input, textarea, select')) field.disabled = !isEvent;
+  updateRegistrationField();
+  $('story-photos-field').hidden = isEvent;
+  $('event-image-field').hidden = !isEvent;
+  $('media-files').multiple = !isEvent;
+  $('media-files').accept = isEvent ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,image/svg+xml,.svg';
+  $('intake-status').hidden = isEvent;
   $('story-templates').hidden = isEvent;
   if (isEvent) $('story-template-info').hidePopover?.();
-  for (const id of ['general-title-field']) $(id).hidden = isEvent;
+  $('dossier-field-title').textContent = isEvent ? 'Titre de l’événement' : 'Titre du récit';
+  $('story-title-help').hidden = isEvent;
+  form.elements.title.placeholder = isEvent ? 'Conférence, rencontre, exposition…' : 'Le titre exact de la couverture';
   $('dossier-title').textContent = isEvent ? 'Nouvel évènement' : 'Nouveau récit';
   $('dossier-intro').textContent = isEvent ? 'Ajoutez une affiche, un programme ou les informations pratiques.' : 'Collez le texte relu de votre récit. Ajoutez des images si vous en avez.';
   $('source-text-label').textContent = isEvent ? 'Texte ou programme de l’évènement' : 'Texte du récit';
   $('source-text-help').textContent = isEvent ? 'Vous pouvez aussi renseigner les informations pratiques ci-dessous.' : 'Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.';
   form.elements.sourceText.placeholder = isEvent ? 'Collez le programme, la description ou le texte de l’affiche.' : 'Collez votre récit ici.';
   if (form.elements.theme.value === '') form.elements.theme.value = 'Récit';
+  updateEventImageOptions();
   renderWorkflow();
   updatePreviewVisibility();
+}
+function updateRegistrationField() {
+  const external = form.elements.contentType.value === 'evenement' && form.elements.event_registrationMode.value === 'external';
+  $('event-external-field').hidden = !external;
+  form.elements.event_registrationUrl.disabled = !external;
+}
+function updateEventImageOptions(selected = state.dossier.eventImageId) {
+  const field = $('event-image');
+  const eligible = media.filter(item => item.admis !== false && !/\.svg$/i.test(item.name));
+  const options = eligible.map(item => new Option(item.name, item.id));
+  field.replaceChildren(new Option('Sans image', ''), ...options);
+  field.value = selected === undefined ? eligible[0]?.id || '' : options.some(option => option.value === selected) ? selected : '';
 }
 function updatePreviewVisibility() {
   const waitingForEvent = form.elements.contentType.value === 'evenement' &&
     currentProposal()?.basis?.contentType !== 'evenement';
   $('studio-output').hidden = waitingForEvent;
-  $('studio-workspace').classList.toggle('awaiting-event-preview', waitingForEvent);
+  $('studio-workspace').classList.toggle('event-workspace', waitingForEvent || currentProposal()?.output?.siteEvent === true);
 }
-function renderMedia() {
+function renderMedia(selected) {
+  updateEventImageOptions(selected);
   const list = $('media-list');
   list.replaceChildren();
   $('media-section').hidden = media.length === 0;
@@ -408,7 +439,7 @@ function renderMedia() {
       mediaFiles.delete(item.id); mediaPreviews.delete(item.id);
       openMediaDetails.delete(item.id);
       media = media.filter((entry) => entry.id !== item.id); renderMedia(); updateGaps();
-      if (state.proposals.length) { renderSlide(); updateProposalGaps(currentProposal()); }
+      if (state.proposals.length) render();
     });
     info.append(name, remove);
     const details = document.createElement('details'); details.className = 'media-meta';
@@ -431,6 +462,10 @@ function updateGaps() {
   const dossier = readDossier();
   state.dossier = structuredClone(dossier);
   persist();
+  if (dossier.contentType === 'evenement' && media.length) {
+    $('media-count').textContent = 'Toutes les images restent dans le dossier. Choisissez celle qui apparaîtra sur la page de l’événement.';
+    return;
+  }
   $('media-count').textContent = media.length
     ? media.length + ' image' + (media.length > 1 ? 's' : '') + ' déposée' + (media.length > 1 ? 's' : '') + (dossier.mediaMode === 'photos' ? (media.length > 1 ? ', disponibles pour la proposition visuelle. ' : ', disponible pour la proposition visuelle. ') : ', non retenue' + (media.length > 1 ? 's' : '') + ' pour la proposition. ') + 'Crédits et droits facultatifs sous chaque photo.'
     : 'Aucune image déposée. Les fichiers ne sont pas envoyés.';
@@ -438,6 +473,7 @@ function updateGaps() {
 function currentProposal() { return state.proposals.find((entry) => entry.number === selectedVersion) || state.proposals.at(-1); }
 function canonicalOutput(entry = currentProposal()) {
   if (!entry) return {};
+  if (entry.output.siteEvent) return entry.output;
   if (!entry.output.composition) entry.output = { ...entry.output, ...compositionToLegacy(ensureComposition(entry.output, entry.basis), entry.basis) };
   return entry.output;
 }
@@ -543,7 +579,9 @@ function preserveCompositionAlerts(previous, next) {
 }
 function updateProposalGaps(entry) {
   const versionGaps = dossierGaps({ ...entry.basis, event: entry.output.event || entry.basis.event });
-  const missingPhotos = proposalSlides(entry).some((slide) => slide.mediaItems.some((item) => !mediaUrls.has(item.id)));
+  const missingPhotos = contentType(entry.basis) === 'evenement'
+    ? publicationMedia(entry.basis).some(item => !mediaUrls.has(item.id))
+    : proposalSlides(entry).some(slide => slide.mediaItems.some(item => !mediaUrls.has(item.id)));
   const note = $('validation-gaps');
   note.textContent = versionGaps.length
     ? 'Informations manquantes dans cette proposition (' + versionGaps.join(', ') + '). Complétez-la avant de continuer.'
@@ -819,9 +857,28 @@ function render() {
     $('version-request').textContent = entry.request ? 'Demande ayant conduit à cette version : ' + entry.request : '';
     const displayed = { ...entry, output: readOutput() };
     updateProposalGaps(displayed);
+    const siteEvent = displayed.output.siteEvent === true;
+    $('review-title').textContent = siteEvent ? 'Aperçu sur le site' : 'Aperçu';
+    $('review-help').textContent = siteEvent
+      ? 'Relisez la page de l’événement. Pour appliquer une modification de la saisie, générez un nouvel aperçu.'
+      : 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
+    $('site-event-preview').hidden = !siteEvent;
+    $('card-workbench').hidden = siteEvent;
     renderEventOutput(displayed);
-    renderSlide(); renderCardEditor();
+    if (siteEvent) {
+      $('event-output').hidden = true;
+      $('visual-direction').textContent = '';
+      $('instruction-feedback').hidden = true;
+      $('composition-diff').hidden = true;
+      renderRevisionControls(entry);
+      renderSiteEvent(displayed);
+    } else {
+      renderSlide();
+      renderCardEditor();
+    }
   } else {
+    $('review-title').textContent = 'Aperçu';
+    $('review-help').textContent = 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
     $('version-select').replaceChildren();
     $('version-date').textContent = '';
     renderRevisionControls();
@@ -856,6 +913,15 @@ function render() {
     const time = document.createElement('time'); time.dateTime = event.at; time.textContent = new Date(event.at).toLocaleString('fr-FR');
     li.append(strong, document.createTextNode(event.note + ' · '), time); history.append(li);
   });
+}
+function renderSiteEvent(entry) {
+  const media = publicationMedia(entry.basis)[0];
+  // A data URL lets the sandbox display private images without granting it access to the Studio origin.
+  const url = media && mediaPreviews.get(media.id)?.dataUrl;
+  const figure = url ? {url, alt:media.alt, credit:media.credit} : null;
+  const css = new URL('./event-page.css?v=1', import.meta.url).href;
+  const html = renderEventPage(entry, figure, {preview:true});
+  $('site-event-frame').srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${css}"><style>body{margin:0}</style>${html}</html>`;
 }
 async function imageSource(file) {
   if (file.type !== 'image/svg+xml' && !/\.svg$/i.test(file.name)) {
@@ -963,6 +1029,17 @@ async function sendIntake(dossier, revision, job) {
   const composition = preserveCompositionAlerts(revision?.previousOutput?.composition,applyCompositionResponse(entreeComposition, result.output.compositionResponse, { currentVersion: entreeComposition.base_version, appliedRequestIds: revision?.previousOutput?.composition?.applied_requests || [] }));
   return { ...result.output, ...compositionToLegacy(composition, dossier), compositionResponse: result.output.compositionResponse };
 }
+function prepareSiteEvent(dossier) {
+  const title = dossier.title.trim();
+  const event = structuredClone(dossier.event);
+  const summary = dossier.sourceText.trim().split(/\n\s*\n/)[0].slice(0, 240) || event.venue;
+  const output = {title, summary, contentType:'evenement', siteEvent:true, event};
+  renderEventPage({basis:dossier, output});
+  const image = publicationMedia(dossier)[0];
+  if (image && !mediaUrls.has(image.id)) throw new Error('Rattachez « ' + image.name + ' » pour vérifier son rendu.');
+  const prepared = act(() => createProposal(saveDossier(state, dossier), output), 'Aperçu du site prêt à relire.');
+  if (prepared) focusStep('review-title');
+}
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const dossier = readDossier();
@@ -971,7 +1048,19 @@ form.addEventListener('submit', async (event) => {
     dossier.contentType === 'evenement' ? 'Ajoutez un programme, une affiche ou les informations de l’évènement.' : 'Ajoutez le texte du récit avant de lancer la composition.',
     true,
   );
-  if (pendingRevision()) return focusStep('revision-notice');
+  if (pendingRevision()) {
+    if ($('studio-output').hidden) return showComposeFeedback('Revenez au récit pour valider ou annuler sa retouche en cours.', true);
+    return focusStep('revision-notice');
+  }
+  if (dossier.contentType === 'evenement') {
+    try {
+      showComposeFeedback('');
+      prepareSiteEvent(dossier);
+    } catch (error) {
+      showComposeFeedback(error.message, true);
+    }
+    return;
+  }
   state.dossier = structuredClone(dossier);
   persist();
   const job = session.start('create');
@@ -992,12 +1081,7 @@ form.addEventListener('submit', async (event) => {
       if (!state.proposals.length) $('proposal-empty').textContent = messages.join(' ') || 'Le modèle demande une précision avant de composer les cartes.';
       return;
     }
-    const prepared = act(() => {
-      const next=createProposal(saveDossier(state, dossier), output);
-      const entry=next.proposals.at(-1);
-      if(entry.output.contentType==='evenement')entry.basis.event={...emptyEvent(),...structuredClone(entry.output.event || {})};
-      return next;
-    }, 'Proposition prête à relire.');
+    const prepared = act(() => createProposal(saveDossier(state, dossier), output), 'Proposition prête à relire.');
     showComposeFeedback('');
     updateGaps();
     if (prepared) requestAnimationFrame(() => {
@@ -1014,6 +1098,7 @@ form.addEventListener('input', () => { dossierEdited(); updateGaps(); state.doss
 form.addEventListener('change', (event) => {
   dossierEdited();
   if (event.target.name === 'contentType') updateContentType();
+  if (event.target.name === 'event_registrationMode') updateRegistrationField();
   updateGaps();
   state.dossier=structuredClone(readDossier());persist();
 });
@@ -1024,14 +1109,18 @@ $('media-files').addEventListener('change', (event) => {
 async function addFiles(files) {
   const epoch = session.epoch;
   dossierEdited();
-  for (const file of Array.from(files)) {
-    if (!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type) && !/\.svg$/i.test(file.name)) continue;
+  const isEvent = form.elements.contentType.value === 'evenement';
+  const accepted = ['image/png','image/jpeg','image/webp'];
+  const valid = Array.from(files).filter(file => accepted.includes(file.type) || (!isEvent && (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name))));
+  let selected;
+  for (const file of isEvent ? valid.slice(0,1) : valid) {
     let preview;
     try { preview = await imagePreviewData(file); }
     catch (error) { if (!session.isEpochCurrent(epoch)) return; feedback(error.message, true); continue; }
     if (!session.isEpochCurrent(epoch)) return;
     const existing = media.find((item) => !mediaUrls.has(item.id) && item.name === file.name && (!item.size || item.size === file.size));
     if (existing) {
+      if (isEvent) selected = existing.id;
       mediaUrls.set(existing.id, URL.createObjectURL(file));
       mediaFiles.set(existing.id, file);
       mediaPreviews.set(existing.id, preview);
@@ -1039,6 +1128,7 @@ async function addFiles(files) {
       continue;
     }
     const id = newMediaId();
+    if (isEvent) selected = id;
     media.push({ id, name: file.name, size: file.size, credit: '', rights: 'à vérifier', rightsEvidence: '', rightsFileName: '' });
     mediaUrls.set(id, URL.createObjectURL(file));
     mediaFiles.set(id, file);
@@ -1047,12 +1137,12 @@ async function addFiles(files) {
   }
   if (!session.isEpochCurrent(epoch)) return;
   if (media.length) {
-    form.elements.usePhotos.checked = true;
+    if (!isEvent) form.elements.usePhotos.checked = true;
     $('media-section').hidden = false;
   }
-  renderMedia(); updateGaps();
+  renderMedia(selected); updateGaps();
   state.dossier=structuredClone(readDossier());persist();
-  if (state.proposals.length) { renderSlide(); updateProposalGaps(currentProposal()); }
+  if (state.proposals.length) render();
 }
 const dropZone = $('drop-zone');
 dropZone.addEventListener('click', (event) => { if (event.target !== $('media-files')) $('media-files').click(); });
@@ -1319,7 +1409,7 @@ function loadMailingEditor() {
   $('mailing-external-emails').value=external?.emails||'';
   $('mailing-external-complete').checked=Boolean(external?.complete);
   const csv=$('mailing-registrations-csv');
-  csv.hidden=studioAccess.role!=='owner'||post?.registrationSource!=='studio';
+  csv.hidden=studioAccess.role!=='owner'||!['studio','wordpress'].includes(post?.registrationSource);
   if(!csv.hidden)csv.href='/api/mailing/registrations.csv?postId='+post.id;
   const draft=mailingDrafts.get(mailingDraftKey());
   for(const [key,id] of Object.entries(mailingFields)){
@@ -1330,9 +1420,14 @@ function loadMailingEditor() {
 }
 function selectMailingPost(purpose, intro) {
   const post=mailingPost();
-  for(const option of $('mailing-purpose').options)option.disabled=Boolean(post?.past)&&option.value!=='thanks';
-  $('mailing-purpose').value=post?.past?'thanks':post?.type==='evenement'
-    ? ([...$('mailing-purpose').options].some(option=>option.value===purpose)?purpose:'invitation')
+  const noSignup=post?.registrationSource==='none';
+  const options=[...$('mailing-purpose').options];
+  for(const option of options){
+    option.disabled=post?.past ? option.value!=='thanks' || noSignup
+      : noSignup && !['invitation','announcement'].includes(option.value);
+  }
+  $('mailing-purpose').value=post?.type==='evenement'
+    ? options.find(option=>option.value===purpose&&!option.disabled)?.value || options.find(option=>!option.disabled)?.value || ''
     : 'announcement';
   if(post && legacyMailingDraftKey?.startsWith(post.id+':')){
     const legacy=mailingDrafts.get(legacyMailingDraftKey);
@@ -1355,6 +1450,11 @@ function scheduleMailingPreview(delay=0) {
   mailingInvalidate();
   $('mailing-audience').textContent=mailingPost()?'Vérification des destinataires…':'Choisissez une publication.';
   if(!mailingPost())return;
+  if(!mailingPurpose()){
+    $('mailing-audience').textContent='Cet événement passé ne proposait pas d’inscription.';
+    $('mailing-preview').disabled=true;
+    return;
+  }
   if(delay)mailingPreviewTimer=setTimeout(loadMailingPreview,delay);
   else void loadMailingPreview();
 }

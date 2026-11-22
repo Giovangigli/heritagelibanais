@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=mailing-compose">
+  <link rel="stylesheet" href="studio-mvp.css?v=event-site">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=mailing-compose"></script>
+  <script type="module" src="studio-mvp.js?v=event-site"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -51,17 +51,26 @@
             <label><input type="radio" name="contentType" value="evenement"> Un évènement</label>
           </fieldset>
           <div class="fields">
-            <label id="general-title-field">Titre du récit <input name="title" placeholder="Le titre exact de la couverture"><small>À renseigner si le titre ne figure pas déjà en tête du texte.</small></label>
+            <label id="general-title-field"><span id="dossier-field-title">Titre du récit</span><input name="title" placeholder="Le titre exact de la couverture"><small id="story-title-help">À renseigner si le titre ne figure pas déjà en tête du texte.</small></label>
             <label><span id="source-text-label">Texte du récit</span> <textarea name="sourceText" rows="10" placeholder="Collez votre récit ici."></textarea><small id="source-text-help">Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.</small></label>
           </div>
           <section id="event-fields" class="event-fields" aria-labelledby="event-fields-title" hidden>
             <h3 id="event-fields-title">Les informations pratiques</h3>
             <p class="hint">Renseignez ce que vous connaissez. Les informations manquantes seront signalées dans la proposition.</p>
             <div class="fields two">
-              <label class="wide">Titre de l’évènement <input name="eventTitle" placeholder="Conférence, rencontre, exposition…"></label>
               <label>Date de début <input name="event_startDate" placeholder="Ex. 22 novembre 2026"></label>
               <label>Heure de début <input name="event_startTime" placeholder="Ex. 18 h 30"></label>
               <label class="wide">Lieu ou accès en ligne <input name="event_venue" placeholder="Nom du lieu ou plateforme"></label>
+            </div>
+            <div class="fields event-registration-fields">
+              <label>Inscription à l’événement
+                <select name="event_registrationMode">
+                  <option value="none">Sans inscription</option>
+                  <option value="site">Formulaire sur le site</option>
+                  <option value="external">Lien externe</option>
+                </select>
+              </label>
+              <label id="event-external-field" hidden>Lien d’inscription <input name="event_registrationUrl" type="url" placeholder="https://…"></label>
             </div>
             <details class="dossier-details">
               <summary>Autres informations pratiques (facultatif)</summary>
@@ -72,7 +81,6 @@
               <label class="wide">Adresse <input name="event_address" placeholder="Numéro et rue"></label>
               <label>Ville <input name="event_city" placeholder="Ville ou commune"></label>
               <label>Intervenants <textarea name="event_speakers" rows="2" placeholder="Un nom par ligne"></textarea></label>
-              <label class="wide">Lien d’inscription <input name="event_registrationUrl" type="url" placeholder="https://…"></label>
               <label>Tarif <input name="event_price" placeholder="Ex. Entrée libre, si confirmé"></label>
               <label>Contact <input name="event_contact" placeholder="Adresse ou téléphone fourni"></label>
               </div>
@@ -85,7 +93,8 @@
           <p id="media-count" class="hint">Aucune image déposée.</p>
           <section id="media-section" class="media-section" aria-labelledby="media-title" hidden>
             <h3 id="media-title">Images déposées</h3>
-            <label class="confirmation"><input type="checkbox" name="usePhotos"> Utiliser ces images dans la proposition</label>
+            <label id="story-photos-field" class="confirmation"><input type="checkbox" name="usePhotos"> Utiliser ces images dans la proposition</label>
+            <label id="event-image-field" class="fields" hidden>Image de l’événement <select id="event-image"></select></label>
             <div id="media-list" class="media-list"></div>
           </section>
           <details id="dossier-details" class="dossier-details">
@@ -121,7 +130,10 @@
               <button id="discard-revision" type="button" class="button secondary">Annuler</button>
               <p id="revision-validation-error" class="hint error" role="status" hidden></p>
             </div>
-            <div class="card-workbench">
+            <div id="site-event-preview" hidden>
+              <iframe id="site-event-frame" title="Aperçu de la page de l’événement sur WordPress" sandbox=""></iframe>
+            </div>
+            <div id="card-workbench" class="card-workbench">
             <div class="card-editing">
             <section id="card-editor" class="card-editor" aria-labelledby="card-editor-title">
               <h3 id="card-editor-title" tabindex="-1">Modifier la carte à la main</h3>

@@ -1,3 +1,6 @@
+import {eventDateTime, renderEventPage} from '../public/private-studio/studio-event-page.mjs';
+export {eventDateTime};
+
 const SITE = 'heritage-libanais.fr';
 const OAUTH_API = `https://public-api.wordpress.com/wp/v2/sites/${SITE}`;
 const APP_API = `https://${SITE}/wp-json/wp/v2`;
@@ -22,28 +25,6 @@ function approvedBody(proposal) {
     return heading||text?`<section class="studio-card-copy" data-card="${index+1}">${heading}${text}</section>`:'';
   }).join('\n');
 }
-const MONTHS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-
-export function eventDateTime(event) {
-  const date=String(event?.startDate||'').trim().toLowerCase();
-  let year,month,day;
-  const iso=date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const french=date.match(/^(\d{1,2})\s+([a-zéûôî]+)\s+(\d{4})$/);
-  const numeric=date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(iso)[year,month,day]=[Number(iso[1]),Number(iso[2]),Number(iso[3])];
-  else if(french)[year,month,day]=[Number(french[3]),MONTHS.indexOf(french[2])+1,Number(french[1])];
-  else if(numeric)[year,month,day]=[Number(numeric[3]),Number(numeric[2]),Number(numeric[1])];
-  else throw failure('Indiquez une date d’événement complète, par exemple « 22 novembre 2026 ».',400);
-  const check=new Date(Date.UTC(year,month-1,day));
-  if(check.getUTCFullYear()!==year||check.getUTCMonth()!==month-1||check.getUTCDate()!==day)throw failure('La date de l’événement est invalide.',400);
-  const time=String(event?.startTime||'').trim().match(/^(\d{1,2})\s*(?:h|:)\s*(\d{0,2})$/i);
-  if(!time)throw failure('Indiquez une heure complète, par exemple « 18 h 30 ».',400);
-  const hour=Number(time[1]),minute=Number(time[2]||0);
-  if(hour>23||minute>59)throw failure('L’heure de l’événement est invalide.',400);
-  const offset=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',timeZoneName:'shortOffset'}).formatToParts(new Date(Date.UTC(year,month-1,day,12))).find(part=>part.type==='timeZoneName')?.value==='GMT+2'?'+02:00':'+01:00';
-  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}T${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}:00${offset}`;
-}
-
 function renderedContent(proposal, uploadedMedia = []) {
   const { basis, output } = proposal;
   const event = output.contentType === 'evenement' || basis.contentType === 'evenement';
@@ -60,12 +41,12 @@ function renderedContent(proposal, uploadedMedia = []) {
 }
 
 export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
-  if (!proposal?.output?.title?.trim() || (!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
+  if (!proposal?.output?.title?.trim() || (!proposal.output.siteEvent&&!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
   if (!/^studio-[a-f0-9]{24}$/.test(slug)) throw failure('Référence de publication invalide.', 400);
   return {
     title: proposal.output.title.trim(),
     excerpt: String(proposal.output.summary || '').trim(),
-    content: renderedContent(proposal, uploadedMedia),
+    content: proposal.output.siteEvent ? renderEventPage(proposal, uploadedMedia[0]) : renderedContent(proposal, uploadedMedia),
     ...(uploadedMedia[0] ? {featured_media:uploadedMedia[0].id} : {}),
     slug,
     status: 'publish',
@@ -82,6 +63,32 @@ async function requestWordPress(connection, url, options, fetchImpl) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw failure(response.status === 401 || response.status === 403 ? 'La connexion WordPress a été refusée.' : `WordPress a refusé l’opération (${response.status}).`, response.status === 401 || response.status === 403 ? 503 : 502);
   return payload;
+}
+
+async function eventPluginRequest(connection, route, fetchImpl) {
+  if (connection?.type !== 'application-password') {
+    throw failure('Connectez WordPress avec un mot de passe d’application pour utiliser le module Événements.',409);
+  }
+  try {
+    return await requestWordPress(connection,`https://${SITE}/wp-json/heritage-events/v1/${route}`,{method:'GET'},fetchImpl);
+  } catch {
+    throw failure('Le module Événements de WordPress ne répond pas. Vérifiez son activation et la connexion WordPress.',409);
+  }
+}
+
+export async function verifyWordPressEventPlugin(connection, fetchImpl) {
+  const status=await eventPluginRequest(connection,'status',fetchImpl);
+  if(status?.ready!==true)throw failure('Activez le module Événements dans WordPress avant de publier.',409);
+}
+
+export async function wordpressEventRegistrations(connection, postId, afterEmail, fetchImpl) {
+  if(!Number.isSafeInteger(postId)||postId<1)throw failure('Référence d’événement invalide.',400);
+  const result=await eventPluginRequest(connection,`registrations/${postId}?after=${encodeURIComponent(afterEmail)}`,fetchImpl);
+  if(!Array.isArray(result?.registrations)||result.registrations.length>500||
+      result.registrations.some(row=>typeof row?.email!=='string'||!row.email||row.email===afterEmail)){
+    throw failure('La liste d’inscrits WordPress ne peut pas être vérifiée.',502);
+  }
+  return result.registrations;
 }
 
 export async function verifyWordPressToken(connection,fetchImpl=fetch){
@@ -126,7 +133,8 @@ export async function publishWordPressPost(connection, proposal, slug, fetchImpl
     return {id:post.id,url:post.link,status:post.status};
   }
   const uploaded=[];
-  for(const image of media) uploaded.push(await uploadMedia(connection,image,fetchImpl));
+  const images = proposal.output.contentType === 'evenement' || proposal.basis.contentType === 'evenement' ? media.slice(0,1) : media;
+  for(const image of images) uploaded.push(await uploadMedia(connection,image,fetchImpl));
   const post = await requestWordPress(connection, `${api}/posts`, {method:'POST',body:JSON.stringify(wordpressPostFromProposal(proposal, slug, uploaded))}, fetchImpl);
   if (!Number.isSafeInteger(post?.id) || post.status !== 'publish' || !post.link?.startsWith(`https://${SITE}/`)) throw failure('WordPress a répondu sans publication vérifiable. Vérifiez le site avant de recommencer.');
   return {id:post.id,url:post.link,status:post.status};

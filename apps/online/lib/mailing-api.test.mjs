@@ -25,10 +25,10 @@ function request(route,{method='GET',body}={}){
     ...(body===undefined?{}:{body:JSON.stringify(body),headers:{'Content-Type':'application/json'}}),
   });
 }
-function call(route,{actor=editor,access=editorAccess,env={},db=blockedDb,fetchImpl=fail,decryptToken=fail,encryptToken=fail,method,body}={}){
+function call(route,{actor=editor,access=editorAccess,env={},db=blockedDb,fetchImpl=fail,decryptToken=fail,encryptToken=fail,listWordPressRegistrations,method,body}={}){
   const input=request(route,{method,body});
   return handleMailingRequest(new URL(input.url).pathname,input,env,actor,{
-    access,db,fetchImpl,decryptToken,encryptToken,bodyJson:r=>r.json(),
+    access,db,fetchImpl,decryptToken,encryptToken,listWordPressRegistrations,bodyJson:r=>r.json(),
   });
 }
 function database(){
@@ -280,4 +280,22 @@ test('an externally managed event requires the complete list, and past events ca
   assert.equal(preview.audience.problem,null);
   assert.doesNotMatch(JSON.stringify(preview),/a@example\.test/i);
   await assert.rejects(call('preview',{method:'POST',body:{...draft,purpose:'invitation'},fetchImpl}),{status:400});
+});
+
+test('WordPress event registrants drive the recipient count, and their CSV stays owner-only',async()=>{
+  const date=new Date(Date.now()+7*86400000).toISOString();
+  const event={id:16,link:'https://heritage-libanais.fr/rencontre/',title:{rendered:'Une rencontre'},content:{rendered:`<article class="studio-event-page studio-wordpress-registration"><header class="event-hero"><time datetime="${date}">Bientôt</time></header></article>`}};
+  const fetchImpl=async()=>Response.json([event]);
+  const listWordPressRegistrations=async(id,after)=>{
+    assert.equal(id,16);
+    assert.equal(after,'');
+    return [{email:'attendee@example.test',name:'=Nom',created_at:'2026-11-22 10:00:00'}];
+  };
+  const preview=await (await call('preview',{method:'POST',body:{postId:16,purpose:'confirmation'},fetchImpl,listWordPressRegistrations})).json();
+  assert.equal(preview.audience.count,1);
+  assert.doesNotMatch(JSON.stringify(preview),/attendee@example/);
+  assert.equal(preview.post.registrationUrl,'https://heritage-libanais.fr/rencontre/#inscription');
+  await assert.rejects(call('registrations.csv?postId=16'),{status:403});
+  const csv=await call('registrations.csv?postId=16',{actor:owner,access:ownerAccess,fetchImpl,listWordPressRegistrations});
+  assert.match(await csv.text(),/"'=Nom","attendee@example.test"/);
 });

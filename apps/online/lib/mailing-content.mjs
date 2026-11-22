@@ -37,9 +37,17 @@ export function parsePublishedPosts(posts,now=Date.now(),{includePastEvents=fals
       if(!Number.isFinite(timestamp))return [];
       past = timestamp <= now;
       if (past && !includePastEvents) return [];
-      registrationSource = html.includes('studio-native-registration') ? 'studio' : 'external';
-      if (registrationSource === 'external') {
-        const link = html.match(/class=["'][^"']*event-practical[^"']*["'][^>]*>[\s\S]*?(https:\/\/[^<"'\s]+)/i);
+      if (html.includes('studio-wordpress-registration')) {
+        registrationSource = 'wordpress';
+        registrationUrl = url + '#inscription';
+      } else if (html.includes('studio-event-no-registration')) {
+        registrationSource = 'none';
+      } else if (html.includes('studio-native-registration')) {
+        registrationSource = 'studio';
+      } else {
+        registrationSource = 'external';
+        const link = html.match(/class=["']studio-event-button["']\s+href=["'](https?:\/\/[^"']+)["']/i)
+          || html.match(/class=["'][^"']*event-practical[^"']*["'][^>]*>[\s\S]*?(https:\/\/[^<"'\s]+)/i);
         registrationUrl = link?.[1] ? decode(link[1]) : undefined;
       }
       date=new Intl.DateTimeFormat('fr-FR',{dateStyle:'long',timeStyle:'short',timeZone:'Europe/Paris'}).format(timestamp);
