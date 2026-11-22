@@ -1368,10 +1368,11 @@ try {
 } catch { /* A local draft is optional. */ }
 const mailingPost=()=>mailingPosts.find(post=>post.id===Number($('mailing-post').value));
 const mailingPurpose=()=>$('mailing-purpose').value;
+const mailingAudience=()=>$('mailing-audience-select').value;
 const mailingDraftKey=()=>$('mailing-post').value+':'+mailingPurpose();
 const mailingUsesExternal=()=>!$('mailing-external').hidden;
 function saveMailingDraft() {
-  selectedMailing={postId:$('mailing-post').value,purpose:mailingPurpose(),drafts:Object.fromEntries(mailingDrafts)};
+  selectedMailing={postId:$('mailing-post').value,purpose:mailingPurpose(),audience:mailingAudience(),drafts:Object.fromEntries(mailingDrafts)};
   try { localStorage.setItem(mailingStorageKey, JSON.stringify(selectedMailing)); }
   catch { /* The open draft remains editable. */ }
 }
@@ -1390,7 +1391,7 @@ function mailingInvalidate() {
   updateMailingSend();
 }
 function mailingInput() {
-  const input={postId:mailingPost().id,purpose:mailingPurpose()};
+  const input={postId:mailingPost().id,purpose:mailingPurpose(),audience:mailingAudience()};
   const draft=mailingDrafts.get(mailingDraftKey());
   for(const key of Object.keys(mailingFields)){
     if(draft?.[key])input[key]=draft[key];
@@ -1400,11 +1401,42 @@ function mailingInput() {
   }
   return input;
 }
-function loadMailingEditor() {
+function selectMailingAudience(preferred) {
+  const post=mailingPost();
+  const purpose=mailingPurpose();
+  const signup=post?.type==='evenement'&&post.registrationSource!=='none'&&Boolean(purpose);
+  const defaultAudience=purpose==='follow_up'?'newsletter_unregistered'
+    : ['confirmation','reminder','thanks'].includes(purpose)?'event_registrants':'newsletter';
+  const choices=signup&&defaultAudience==='newsletter'?['newsletter','newsletter_unregistered']:[defaultAudience];
+  const select=$('mailing-audience-select');
+  for(const option of select.options)option.disabled=!choices.includes(option.value);
+  select.value=choices.includes(preferred)?preferred:defaultAudience;
+  select.disabled=!post||!purpose||choices.length===1;
+}
+function updateMailingAudience() {
+  const post=mailingPost();
+  const selected=mailingAudience();
+  const immediate=selected==='newsletter_unregistered';
+  const external=post?.registrationSource==='external';
+  $('mailing-external').hidden=!external||selected==='newsletter';
+  $('mailing-event-list').hidden=!studioAccess.canScheduleMailing||
+    !['wordpress','studio','external'].includes(post?.registrationSource)||(external&&selected==='newsletter');
+  $('mailing-sync-status').textContent='Cette liste contient les abonnés à la Newsletter déjà inscrits à cet événement.';
+  $('mailing-quota-note').textContent=immediate
+    ? 'Envoi immédiat à 250 destinataires maximum, selon le quota Brevo disponible.'
+    : 'Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.';
+  $('mailing-send-title').textContent=immediate?'3. Envoyer maintenant':'3. Programmer l’envoi';
+  $('mailing-confirm-label').textContent=immediate
+    ? 'J’ai relu le contenu, le lien et les destinataires. Je veux envoyer ce mail maintenant.'
+    : 'J’ai relu le contenu, le lien et les destinataires. Je veux programmer cet envoi dans Brevo.';
+  $('mailing-send').textContent=immediate?'Revérifier et envoyer':'Programmer dans Brevo';
+}
+function loadMailingEditor(preferredAudience) {
   const post=mailingPost();
   const event=post?.type==='evenement';
   $('mailing-purpose-field').hidden=!event;
-  $('mailing-external').hidden=post?.registrationSource!=='external'||['invitation','announcement'].includes(mailingPurpose());
+  selectMailingAudience(preferredAudience);
+  updateMailingAudience();
   const external=externalRegistrations.get(post?.id);
   $('mailing-external-emails').value=external?.emails||'';
   $('mailing-external-complete').checked=Boolean(external?.complete);
@@ -1418,7 +1450,7 @@ function loadMailingEditor() {
     $(id).placeholder='';
   }
 }
-function selectMailingPost(purpose, intro) {
+function selectMailingPost(purpose, intro, preferredAudience) {
   const post=mailingPost();
   const noSignup=post?.registrationSource==='none';
   const options=[...$('mailing-purpose').options];
@@ -1441,7 +1473,7 @@ function selectMailingPost(purpose, intro) {
     const key=mailingDraftKey();
     mailingDrafts.set(key,{...mailingDrafts.get(key),intro});
   }
-  loadMailingEditor();
+  loadMailingEditor(preferredAudience);
   saveMailingDraft();
   $('mailing-post-note').textContent=post?.type==='evenement'?post.date:'';
   scheduleMailingPreview();
@@ -1479,8 +1511,8 @@ async function loadMailingPreview() {
     const {audience}=result;
     const label=mailingAudienceLabels[audience.kind];
     const count=audience.count===null?'':` · ${audience.count} destinataire(s)`;
-    const excluded=audience.kind==='newsletter_unregistered'&&audience.registeredCount!==null
-      ? ` · ${audience.registeredCount} inscription(s) vérifiée(s)` : '';
+    const excluded=audience.kind==='newsletter_unregistered'&&audience.excludedCount!==null
+      ? ` · ${audience.excludedCount} abonné(s) déjà inscrit(s) exclu(s)` : '';
     $('mailing-audience').textContent=label+count+excluded+(audience.problem?' — '+audience.problem:'');
     $('mailing-subject').textContent=result.email.subject;
     $('mailing-preheader').textContent=result.email.previewText;
@@ -1511,7 +1543,7 @@ function mailingTab(name){
 async function mailingJson(path,options={}){
   const response=await fetch(path,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})}});
   const result=await response.json();
-  if(!response.ok)throw Object.assign(new Error(result.error||result.job?.error||'Cette action est momentanément indisponible.'),{job:result.job});
+  if(!response.ok)throw Object.assign(new Error(result.error||result.job?.error||'Cette action est momentanément indisponible.'),{job:result.job,status:response.status});
   return result;
 }
 async function refreshMailingConnection(){
@@ -1573,7 +1605,7 @@ async function mailingRefresh({postId,intro}={}){
       if(group.children.length)select.append(group);
     }
     select.value=mailingPosts.some(post=>String(post.id)===preferred)?preferred:'';
-    selectMailingPost(postId?undefined:selectedMailing.purpose,intro);
+    selectMailingPost(postId?undefined:selectedMailing.purpose,intro,postId?undefined:selectedMailing.audience);
     if(!mailingPosts.length)$('mailing-post-note').textContent='Aucune publication disponible pour un envoi.';
     else if(postId&&!select.value)$('mailing-post-note').textContent='Cette publication n’apparaît pas encore dans WordPress.';
   }catch(error){
@@ -1582,9 +1614,9 @@ async function mailingRefresh({postId,intro}={}){
 }
 function mailingShowJob(job){
   const box=$('mailing-job');box.replaceChildren();box.hidden=false;
-  const title=document.createElement('strong');title.textContent=job.status==='scheduled'?'Envoi programmé dans Brevo':'Envoi à vérifier dans Brevo';box.append(title);
+  const title=document.createElement('strong');title.textContent=job.status==='submitted'?'Envoi déclenché dans Brevo':job.status==='scheduled'?'Envoi programmé dans Brevo':'Envoi à vérifier dans Brevo';box.append(title);
   const content=document.createElement('p');content.textContent=job.title||'';box.append(content);
-  for(const part of job.batches||[]){const line=document.createElement('p');line.textContent=`${part.count} destinataire(s) · ${new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'})}${part.campaignId?' · campagne Brevo '+part.campaignId:''}`;box.append(line);}
+  for(const part of job.batches||[]){const line=document.createElement('p');const date=part.scheduledAt?new Date(part.scheduledAt).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'full',timeStyle:'short'}):'';line.textContent=[`${part.count} destinataire(s)`,date,part.campaignId?'campagne Brevo '+part.campaignId:''].filter(Boolean).join(' · ');box.append(line);}
   if(job.error){const error=document.createElement('p');error.textContent=job.error;box.append(error);}
 }
 $('tab-editor').addEventListener('click',()=>mailingTab('editor'));
@@ -1747,6 +1779,28 @@ $('mailing-purpose').addEventListener('change',()=>{
   saveMailingDraft();
   scheduleMailingPreview();
 });
+$('mailing-audience-select').addEventListener('change',()=>{
+  updateMailingAudience();
+  saveMailingDraft();
+  scheduleMailingPreview();
+});
+$('mailing-sync-list').addEventListener('click',async()=>{
+  const post=mailingPost();
+  if(!post)return;
+  const input=mailingInput();
+  const button=$('mailing-sync-list');
+  const status=$('mailing-sync-status');
+  button.disabled=true;
+  status.textContent='Synchronisation de la liste Brevo…';
+  try{
+    const {listId,count}=await mailingJson('/api/mailing/event-list',{method:'POST',body:JSON.stringify({
+      postId:post.id,externalRegistrations:input.externalRegistrations,
+    })});
+    if(mailingPost()?.id===post.id)status.textContent=`Liste Brevo nº ${listId} · ${count} abonné(s) déjà inscrit(s).`;
+  }catch(error){
+    if(mailingPost()?.id===post.id)status.textContent=error.message;
+  }finally{button.disabled=false;}
+});
 for(const [key,id] of Object.entries(mailingFields))$(id).addEventListener('input',event=>{
   const draftKey=mailingDraftKey();
   mailingDrafts.set(draftKey,{...mailingDrafts.get(draftKey),[key]:event.target.value.trim()});
@@ -1784,20 +1838,20 @@ $('mailing-send').addEventListener('click',async()=>{
   if(!mailingCanSend||mailingSending||!preview||preview.audience.problem||!$('mailing-confirm').checked)return;
   mailingSending=true;
   updateMailingSend();
-  $('mailing-send-status').textContent='Programmation dans Brevo…';
+  $('mailing-send-status').textContent=preview.audience.kind==='newsletter_unregistered'
+    ? 'Nouvelle vérification des destinataires…' : 'Programmation dans Brevo…';
   try{
     const {job}=await mailingJson('/api/mailing/send',{method:'POST',body:JSON.stringify({
       ...preview.input,contentHash:preview.contentHash,requestId:preview.requestId,confirmed:true,
     })});
     mailingShowJob(job);
-    $('mailing-send-status').textContent=job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
+    $('mailing-send-status').textContent=job.status==='submitted'?'Envoi déclenché dans Brevo.'
+      :job.status==='scheduled'?'Envoi programmé.':'Une étape doit être vérifiée dans Brevo.';
     if(mailingPreview===preview)mailingPreview=null;
   }catch(error){
     $('mailing-send-status').textContent=error.message;
-    if(error.job){
-      mailingShowJob(error.job);
-      if(mailingPreview===preview)mailingPreview=null;
-    }
+    if(error.job)mailingShowJob(error.job);
+    if((error.job||error.status===409)&&mailingPreview===preview)mailingInvalidate();
   }finally{
     mailingSending=false;
     $('mailing-confirm').checked=false;

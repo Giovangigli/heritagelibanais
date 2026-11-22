@@ -7,7 +7,7 @@
   <title>Studio privé · Héritage Libanais</title>
   <link rel="stylesheet" href="studio-mvp.css?v=event-site">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=event-site"></script>
+  <script type="module" src="studio-mvp.js?v=event-audiences"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -278,14 +278,26 @@
         <label>Introduction de l’e-mail <textarea id="mailing-intro" rows="4" maxlength="1200" placeholder="Présentez ce récit ou cet événement en quelques phrases."></textarea></label>
       </div>
       <div class="mailing-card">
-        <h3>2. Destinataires et aperçu</h3><p id="mailing-audience" class="hint" role="status">Choisissez une publication.</p>
-        <p class="hint">Le Studio réserve 50 e-mails par jour pour les confirmations et les bienvenues. Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.</p>
+        <h3>2. Destinataires et aperçu</h3>
+        <label>Destinataires
+          <select id="mailing-audience-select" disabled>
+            <option value="newsletter">Abonnés confirmés à la Newsletter</option>
+            <option value="newsletter_unregistered">Abonnés à la Newsletter non inscrits à cet événement</option>
+            <option value="event_registrants">Inscrits à cet événement</option>
+          </select>
+        </label>
+        <p id="mailing-audience" class="hint" role="status">Choisissez une publication.</p>
+        <div id="mailing-event-list" hidden>
+          <button id="mailing-sync-list" type="button" class="button secondary">Synchroniser la liste d’exclusion Brevo</button>
+          <p id="mailing-sync-status" class="hint" role="status">Cette liste contient les abonnés à la Newsletter déjà inscrits à cet événement.</p>
+        </div>
+        <p id="mailing-quota-note" class="hint">Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.</p>
         <button id="mailing-preview" type="button" class="button secondary">Actualiser l’aperçu du mail</button>
         <p id="mailing-preview-status" class="hint" role="status"></p>
         <div id="mailing-preview-panel" hidden><p><strong>Objet :</strong> <span id="mailing-subject"></span></p><p><strong>Aperçu :</strong> <span id="mailing-preheader"></span></p><iframe id="mailing-preview-frame" title="Aperçu de la Newsletter" sandbox=""></iframe></div>
       </div>
       <div class="mailing-card">
-        <h3>3. Programmer l’envoi</h3><label id="mailing-confirmation" class="confirmation"><input id="mailing-confirm" type="checkbox"> J’ai relu le contenu, le lien et les destinataires. Je veux programmer cet envoi dans Brevo.</label>
+        <h3 id="mailing-send-title">3. Programmer l’envoi</h3><label id="mailing-confirmation" class="confirmation"><input id="mailing-confirm" type="checkbox"> <span id="mailing-confirm-label">J’ai relu le contenu, le lien et les destinataires. Je veux programmer cet envoi dans Brevo.</span></label>
         <button id="mailing-send" type="button" class="button primary" disabled>Programmer dans Brevo</button><p id="mailing-send-status" class="hint" role="status"></p>
         <div id="mailing-job" class="mailing-job" hidden></div>
       </div>

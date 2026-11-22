@@ -36,6 +36,13 @@
       "when": 1795121120575,
       "tag": "0004_glossy_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795363996446,
+      "tag": "0005_brevo_event_lists",
+      "breakpoints": true
     }
   ]
 }
