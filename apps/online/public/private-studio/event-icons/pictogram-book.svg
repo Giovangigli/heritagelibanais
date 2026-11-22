@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Pictogramme récit</title>
+  <path d="M48 77c-12-7-25-9-38-6V20c14-3 27-1 38 6 11-7 24-9 38-6v51c-13-3-26-1-38 6Z" fill="none" stroke="#123C32" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M48 26v51M18 33c8-1 16 0 23 4M18 45c8-1 16 0 23 4M55 37c7-4 15-5 23-4M55 49c7-4 15-5 23-4" fill="none" stroke="#123C32" stroke-width="4" stroke-linecap="round"/>
+  <path d="M18 82h60" stroke="#B82F2B" stroke-width="5"/>
+</svg>

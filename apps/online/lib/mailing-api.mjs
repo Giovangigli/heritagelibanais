@@ -69,10 +69,10 @@ async function audience(key,fetchImpl){
   return [...unique.values()].sort((a,b)=>a.id-b.id);
 }
 
-async function setListMembers(key,listId,action,ids,fetchImpl){
-  for(let offset=0;offset<ids.length;offset+=150){
+async function setListMembers(key,listId,action,values,fetchImpl,field='ids'){
+  for(let offset=0;offset<values.length;offset+=150){
     const changed=await brevo(key,`/contacts/lists/${listId}/contacts/${action}`,{
-      method:'POST',body:{ids:ids.slice(offset,offset+150)},fetchImpl,
+      method:'POST',body:{[field]:values.slice(offset,offset+150)},fetchImpl,
     });
     if(changed?.contacts?.failure?.length||changed?.failure?.length)throw failure('Brevo a refusé certains contacts.',502);
   }
@@ -86,14 +86,14 @@ async function verifyListMembers(key,listId,wanted,fetchImpl){
   }
 }
 
-async function findEventList(key,name,fetchImpl){
+async function findEventList(key,identity,fetchImpl){
   let listId;
   for(let offset=0;;offset+=50){
     const page=await brevo(key,`/contacts/folders/${MAILING_FOLDER}/lists?limit=50&offset=${offset}`,{fetchImpl});
     if(!Array.isArray(page?.lists))throw failure('Les listes Brevo sont indisponibles.',502);
-    for(const list of page.lists.filter(list=>list.name===name)){
+    for(const list of page.lists.filter(list=>typeof list.name==='string'&&list.name.endsWith(' · '+identity))){
       if(listId||!Number.isSafeInteger(list.id)||list.id<=0||list.id===NEWSLETTER_LIST){
-        throw failure('La liste d’exclusion de cet événement est ambiguë dans Brevo.',409);
+        throw failure('La liste des inscrits de cet événement est ambiguë dans Brevo.',409);
       }
       listId=list.id;
     }
@@ -101,45 +101,90 @@ async function findEventList(key,name,fetchImpl){
   }
 }
 
-async function syncEventList(key,postId,excluded,{db,workspaceUserId,fetchImpl}){
+async function syncEventList(key,post,registrations,{db,workspaceUserId,fetchImpl}){
+  const postId=post.id;
   const now=Date.now(),lockedUntil=now+900000;
   const row=await db.prepare(`
     INSERT INTO studio_brevo_event_lists (workspace_id,event_post_id,locked_until) VALUES (?,?,?)
     ON CONFLICT (workspace_id,event_post_id) DO UPDATE SET locked_until=excluded.locked_until
     WHERE studio_brevo_event_lists.locked_until <= ?
-    RETURNING list_id
+    RETURNING list_id, import_process_id, import_audience_hash
   `).bind(workspaceUserId,postId,lockedUntil,now).first();
   if(!row)throw failure('La liste Brevo de cet événement est déjà en cours de mise à jour.',409);
   try{
-    const name=`Exclusion Newsletter · Événement ${postId} · ${(await hash(workspaceUserId)).slice(0,16)}`;
+    const identity=`Événement ${postId} · ${(await hash(workspaceUserId)).slice(0,16)}`;
+    const name=`Inscrits · ${post.title.slice(0,70)} · ${identity}`;
     let listId=row.list_id;
     if(listId){
       try{
         const list=await brevo(key,`/contacts/lists/${listId}`,{fetchImpl});
-        if(list?.id!==listId||list.name!==name)throw failure('La liste d’exclusion Brevo de cet événement a changé.',409);
+        if(list?.id!==listId||typeof list.name!=='string'||!list.name.endsWith(' · '+identity)){
+          throw failure('La liste Brevo de cet événement a changé.',409);
+        }
+        if(list.name!==name)await brevo(key,`/contacts/lists/${listId}`,{method:'PUT',body:{name},fetchImpl});
       }catch(error){
         if(error.providerStatus!==404)throw error;
         listId=null;
       }
     }
     if(!listId){
-      listId=await findEventList(key,name,fetchImpl);
+      listId=await findEventList(key,identity,fetchImpl);
       if(!listId){
         const list=await brevo(key,'/contacts/lists',{method:'POST',body:{name,folderId:MAILING_FOLDER},fetchImpl});
         listId=list?.id;
-        if(!Number.isSafeInteger(listId)||listId<=0||listId===NEWSLETTER_LIST)throw failure('La liste d’exclusion Brevo n’a pas été créée.',502);
+        if(!Number.isSafeInteger(listId)||listId<=0||listId===NEWSLETTER_LIST)throw failure('La liste des inscrits Brevo n’a pas été créée.',502);
       }
+      else await brevo(key,`/contacts/lists/${listId}`,{method:'PUT',body:{name},fetchImpl});
       await db.prepare('UPDATE studio_brevo_event_lists SET list_id = ? WHERE workspace_id = ? AND event_post_id = ? AND locked_until = ?')
         .bind(listId,workspaceUserId,postId,lockedUntil).run();
     }
-    const wanted=new Set(excluded.map(person=>person.id));
-    const current=new Set((await listContacts(key,listId,fetchImpl)).map(person=>person.id));
-    const remove=[...current].filter(id=>!wanted.has(id));
-    const add=[...wanted].filter(id=>!current.has(id));
+    const saveImport=(processId,audienceHash)=>db.prepare(`UPDATE studio_brevo_event_lists
+      SET import_process_id = ?, import_audience_hash = ? WHERE workspace_id = ? AND event_post_id = ? AND locked_until = ?`)
+      .bind(processId,audienceHash,workspaceUserId,postId,lockedUntil).run();
+    const audienceHash=await hash(registrations);
+    if(listId!==row.list_id&&row.import_process_id){
+      await saveImport(null,null);
+      row.import_process_id=null;
+    }
+    let completed=false;
+    if(row.import_process_id){
+      const process=await brevo(key,`/processes/${row.import_process_id}`,{fetchImpl});
+      if(['queued','in_process','processing'].includes(process?.status))return {listId,name,count:registrations.length,pending:true};
+      if(!['completed','failed','cancelled'].includes(process?.status))throw failure('Brevo n’a pas confirmé l’état de l’import.',502);
+      completed=process.status==='completed'&&row.import_audience_hash===audienceHash;
+      if(process.status!=='completed'){
+        await saveImport(null,null);
+        throw failure('L’import Brevo a échoué. Relancez la synchronisation.',502);
+      }
+    }
+    const wanted=new Set(registrations);
+    const current=await listContacts(key,listId,fetchImpl);
+    if(current.some(person=>!Number.isSafeInteger(person.id)||typeof person.email!=='string')){
+      throw failure('La composition de la liste Brevo ne peut pas être vérifiée.',502);
+    }
+    const currentEmails=new Set(current.map(person=>emailKey(person.email)));
+    const missing=registrations.filter(email=>!currentEmails.has(email));
+    const remove=current.filter(person=>!wanted.has(emailKey(person.email))).map(person=>person.id);
     await setListMembers(key,listId,'remove',remove,fetchImpl);
-    await setListMembers(key,listId,'add',add,fetchImpl);
-    if(remove.length||add.length)await verifyListMembers(key,listId,wanted,fetchImpl);
-    return listId;
+    if(missing.length&&!completed){
+      const imported=await brevo(key,'/contacts/import',{method:'POST',body:{
+        jsonBody:missing.map(email=>({email})),listIds:[listId],updateExistingContacts:false,disableNotification:true,
+      },fetchImpl});
+      if(!Number.isSafeInteger(imported?.processId)||imported.processId<=0)throw failure('Brevo n’a pas confirmé le lancement de l’import.',502);
+      await saveImport(imported.processId,audienceHash);
+      return {listId,name,count:registrations.length,pending:true};
+    }
+    // The import can skip existing Brevo contacts. Link those contacts without updating their preferences.
+    await setListMembers(key,listId,'add',missing,fetchImpl,'emails');
+    if(missing.length||remove.length){
+      const members=await listContacts(key,listId,fetchImpl);
+      const actual=new Set(members.map(person=>emailKey(person.email)));
+      if(actual.size!==wanted.size||[...actual].some(email=>!wanted.has(email))){
+        throw failure('La liste des inscrits Brevo n’a pas pu être vérifiée. Relancez la synchronisation.',409);
+      }
+    }
+    if(row.import_process_id)await saveImport(null,null);
+    return {listId,name,count:wanted.size,pending:false};
   }finally{
     await db.prepare('UPDATE studio_brevo_event_lists SET locked_until = 0 WHERE workspace_id = ? AND event_post_id = ? AND locked_until = ?')
       .bind(workspaceUserId,postId,lockedUntil).run();
@@ -342,11 +387,13 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     const input=await bodyJson(request,600000);
     const post=(await fetchPublishedContent(fetchImpl,{includePastEvents:true})).find(item=>item.id===input?.postId&&item.type==='evenement');
     if(!post||post.registrationSource==='none')throw failure('Choisissez un événement avec inscription.');
+    const registrations=await eventEmails(post,input,{db,workspaceUserId,listWordPressRegistrations});
+    if(registrations===null)throw failure('Renseignez la liste complète des inscrits.',409);
+    if(registrations.length>2000)throw failure('La liste dépasse la capacité de vérification du Studio.',409);
     const key=await connectionKey();
-    const recipients=await mailingAudience({post,kind:'newsletter_unregistered'},input,{db,workspaceUserId,connectionKey:()=>key,fetchImpl,listWordPressRegistrations});
-    if(recipients.problem)throw failure(recipients.problem,409);
-    const listId=await syncEventList(key,post.id,recipients.excluded,{db,workspaceUserId,fetchImpl});
-    return json({listId,count:recipients.excluded.length});
+    if(!key)throw failure('Connectez Brevo pour synchroniser les inscrits.',409);
+    await expectedAccount(key,fetchImpl);
+    return json(await syncEventList(key,post,registrations,{db,workspaceUserId,fetchImpl}));
   }
   if(path==='/api/mailing/preview'&&request.method==='POST'){
     const input=await bodyJson(request,600000);
@@ -358,9 +405,11 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
       recipients={people:null,registeredCount:null,problem:error.status===400?error.message:'Le Studio n’a pas pu vérifier les destinataires.'};
     }
     const {post,email,intro,kind}=draft;
+    const name=kind==='event_registrants'?`Inscrits · ${post.title}`
+      :kind==='newsletter_unregistered'?`La Newsletter · hors inscrits à « ${post.title} »`:'La Newsletter';
     return json({
       post,email,intro,
-      audience:{kind,count:recipients.people?.length??null,registeredCount:recipients.registeredCount,
+      audience:{kind,name,count:recipients.people?.length??null,registeredCount:recipients.registeredCount,
         excludedCount:recipients.excluded?.length??null,problem:audienceProblem(draft,recipients)},
       contentHash:await mailingHash(draft,recipients.people),
     });
@@ -406,7 +455,6 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
     if(!existing)throw failure('Une demande d’envoi existe déjà avec cette référence.',409);
     if(JSON.parse(existing.state_json).id!==job.id)return json({job:JSON.parse(existing.state_json)});
     try{
-      const exclusionListId=immediate?await syncEventList(key,post.id,recipients.excluded,{db,workspaceUserId,fetchImpl}):null;
       for(let i=0;i<batches.length;i++){
         const scheduledAt=immediate?null:nextParisMorning(i+1,new Date(now));
         const recipients=batches[i];
@@ -424,12 +472,12 @@ export async function handleMailingRequest(path,request,env,user,{db,bodyJson,en
           continue;
         }
         const list=await brevo(key,'/contacts/lists',{method:'POST',body:{name:`Mailing Héritage Libanais · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,folderId:MAILING_FOLDER},fetchImpl});
-        if(!Number.isSafeInteger(list?.id)||list.id<=0||list.id===NEWSLETTER_LIST||list.id===exclusionListId)throw failure('La liste de diffusion n’a pas été créée.',502);
+        if(!Number.isSafeInteger(list?.id)||list.id<=0||list.id===NEWSLETTER_LIST)throw failure('La liste de diffusion n’a pas été créée.',502);
         const part={listId:list.id,count:recipients.length,scheduledAt,campaignId:null,status:'list_created'};job.batches.push(part);await saveJob(db,job);
         await setListMembers(key,list.id,'add',recipients.map(person=>person.id),fetchImpl);
         part.status='list_ready';await saveJob(db,job);
         const campaign=await brevo(key,'/emailCampaigns',{method:'POST',body:{name:`${post.type==='evenement'?EVENT_MAILS[purpose].label:'La Newsletter'} · ${post.title} · ${job.id.slice(0,8)} · ${i+1}/${batches.length}`,sender:{email:sender.email,name:'Héritage Libanais'},replyTo,subject:email.subject,previewText:email.previewText,htmlContent:email.html,
-          recipients:{listIds:[list.id],...(immediate?{exclusionListIds:[exclusionListId]}:{})},...(scheduledAt?{scheduledAt}:{})},fetchImpl});
+          recipients:{listIds:[list.id]},...(scheduledAt?{scheduledAt}:{})},fetchImpl});
         if(!Number.isSafeInteger(campaign?.id))throw failure('La campagne Brevo n’a pas été créée.',502);
         part.campaignId=campaign.id;part.status='campaign_created';await saveJob(db,job);
         if(immediate){

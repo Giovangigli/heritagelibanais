@@ -43,6 +43,13 @@
       "when": 1795363996446,
       "tag": "0005_brevo_event_lists",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795367841427,
+      "tag": "0006_brevo_event_registrants",
+      "breakpoints": true
     }
   ]
 }

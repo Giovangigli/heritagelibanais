@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=event-site">
+  <link rel="stylesheet" href="studio-mvp.css?v=event-workspace">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=event-audiences"></script>
+  <script type="module" src="studio-mvp.js?v=event-workspace"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -27,7 +27,7 @@
       <a href="#mailing-view" id="home-brevo-link"><strong>Brevo · Newsletter</strong><span id="home-brevo-status">Vérification…</span></a>
       <a href="#instagram-view" id="home-instagram-link"><strong>Instagram · Meta</strong><span id="home-instagram-status">Vérification…</span></a>
     </section>
-    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Atelier éditorial</button><button id="tab-mailing" type="button" class="studio-tab">Newsletter</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
+    <nav class="studio-tabs" aria-label="Espaces du Studio"><button id="tab-editor" type="button" class="studio-tab active" aria-current="page">Récit</button><button id="tab-event" type="button" class="studio-tab">Événement</button><button id="tab-mailing" type="button" class="studio-tab">Mailing</button><button id="tab-instagram" type="button" class="studio-tab">Instagram</button></nav>
     <div id="editor-view">
     <section class="workflow" aria-labelledby="workflow-title">
       <div class="section-head"><h2 id="workflow-title">Parcours du dossier</h2><strong id="current-status" aria-live="polite">Nouveau récit</strong></div>
@@ -46,10 +46,7 @@
       <section class="panel input-panel" aria-labelledby="dossier-title">
         <div class="panel-head"><p class="eyebrow">Étape 01</p><h2 id="dossier-title" tabindex="-1">Nouveau récit</h2><p id="dossier-intro">Collez le texte relu de votre récit. Ajoutez des images si vous en avez.</p></div>
         <form id="dossier-form">
-          <fieldset class="content-choice"><legend>Que préparez-vous ?</legend>
-            <label><input type="radio" name="contentType" value="recit" checked> Un récit</label>
-            <label><input type="radio" name="contentType" value="evenement"> Un évènement</label>
-          </fieldset>
+          <input type="hidden" name="contentType" value="recit">
           <div class="fields">
             <label id="general-title-field"><span id="dossier-field-title">Titre du récit</span><input name="title" placeholder="Le titre exact de la couverture"><small id="story-title-help">À renseigner si le titre ne figure pas déjà en tête du texte.</small></label>
             <label><span id="source-text-label">Texte du récit</span> <textarea name="sourceText" rows="10" placeholder="Collez votre récit ici."></textarea><small id="source-text-help">Le Studio propose jusqu’à 10 cartes, couverture comprise. Vous pourrez ensuite ajuster le découpage.</small></label>
@@ -86,6 +83,10 @@
               </div>
             </details>
           </section>
+          <div id="event-visual-field" class="fields event-fields" hidden>
+            <label>Visuel de l’événement <select id="event-visual"><option value="">Sans visuel</option><option value="photo">Importer une image</option></select></label>
+            <img id="event-icon-preview" class="event-icon-preview" alt="" hidden>
+          </div>
           <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Glisser des images ou choisir des fichiers">
             <strong>Glissez les images ici</strong><span>ou cliquez pour choisir une ou plusieurs images</span>
             <input id="media-files" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" multiple aria-label="Choisir des images">
@@ -94,7 +95,6 @@
           <section id="media-section" class="media-section" aria-labelledby="media-title" hidden>
             <h3 id="media-title">Images déposées</h3>
             <label id="story-photos-field" class="confirmation"><input type="checkbox" name="usePhotos"> Utiliser ces images dans la proposition</label>
-            <label id="event-image-field" class="fields" hidden>Image de l’événement <select id="event-image"></select></label>
             <div id="media-list" class="media-list"></div>
           </section>
           <details id="dossier-details" class="dossier-details">
@@ -106,11 +106,11 @@
           </details>
           <p id="intake-status" class="hint">Vérification de la connexion au modèle…</p>
           <p id="compose-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
-          <div class="action-row"><button type="submit" class="button primary">Générer l’aperçu</button></div>
+          <div class="action-row"><button id="dossier-preview-button" type="submit" class="button primary">Générer l’aperçu</button></div>
         </form>
       </section>
       <div id="studio-output" class="output-column">
-        <section class="panel review-panel" aria-labelledby="review-title">
+        <section id="studio-review" class="panel review-panel" aria-labelledby="review-title">
           <div class="panel-head"><p class="eyebrow">Étape 02</p>
             <div class="review-heading"><h2 id="review-title" tabindex="-1">Aperçu</h2><button id="story-templates" class="template-info-button" type="button" popovertarget="story-template-info" aria-label="Voir les gabarits de récit" title="Gabarits de récit">i</button></div>
             <p id="review-help">Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.</p>
@@ -122,7 +122,7 @@
           </section>
           <div id="proposal-empty" class="empty">Votre proposition apparaîtra ici après la composition.</div>
           <div id="proposal-area" hidden>
-            <div class="version-bar"><label for="version-select">Version affichée</label><select id="version-select"></select><span id="version-date"></span></div>
+            <div id="story-version-bar" class="version-bar"><label for="version-select">Version affichée</label><select id="version-select"></select><span id="version-date"></span></div>
             <div id="version-request" class="request-note" hidden></div>
             <div id="revision-notice" class="revision-notice" tabindex="-1" aria-label="Modifications en attente" hidden>
               <span role="status">Modifications en attente de validation. Valider crée une nouvelle version.</span>
@@ -288,8 +288,8 @@
         </label>
         <p id="mailing-audience" class="hint" role="status">Choisissez une publication.</p>
         <div id="mailing-event-list" hidden>
-          <button id="mailing-sync-list" type="button" class="button secondary">Synchroniser la liste d’exclusion Brevo</button>
-          <p id="mailing-sync-status" class="hint" role="status">Cette liste contient les abonnés à la Newsletter déjà inscrits à cet événement.</p>
+          <button id="mailing-sync-list" type="button" class="button secondary">Synchroniser les inscrits dans Brevo</button>
+          <p id="mailing-sync-status" class="hint" role="status">La liste Brevo est réservée aux inscriptions à cet événement.</p>
         </div>
         <p id="mailing-quota-note" class="hint">Le Studio programme jusqu’à 250 e-mails par jour, à 10 h, à partir du lendemain.</p>
         <button id="mailing-preview" type="button" class="button secondary">Actualiser l’aperçu du mail</button>

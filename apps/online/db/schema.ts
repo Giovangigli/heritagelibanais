@@ -23,6 +23,8 @@ export const brevoEventLists=sqliteTable('studio_brevo_event_lists',{
   workspaceId:text('workspace_id').notNull(),
   eventPostId:integer('event_post_id').notNull(),
   listId:integer('list_id'),
+  importProcessId:integer('import_process_id'),
+  importAudienceHash:text('import_audience_hash'),
   lockedUntil:integer('locked_until').notNull().default(0),
 },table=>[primaryKey({columns:[table.workspaceId,table.eventPostId]})]);
 export const wordpressPublications=sqliteTable('studio_wordpress_publications',{

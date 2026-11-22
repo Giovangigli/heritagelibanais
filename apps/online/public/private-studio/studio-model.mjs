@@ -26,13 +26,13 @@ export const emptyEvent = () => ({
   address: '', city: '', speakers: [], registrationMode: 'none', registrationUrl: '', price: '', contact: '', missingFields: [],
 });
 
-export const emptyState = () => ({
+export const emptyState = (type = 'recit') => ({
   schema: 1,
   status: STATUSES[0],
   dossier: {
     title: '', sourceText: '', sources: '', facts: '', theme: 'Récit',
     place: '', date: '', cta: '', brief: '', publishedUrl: '', mediaMode: 'none', media: [],
-    contentType: 'recit', event: emptyEvent(),
+    contentType: type, event: emptyEvent(),
   },
   proposals: [], correctionRequest: '', draft: null, history: [],
 });
@@ -57,13 +57,52 @@ const sourceContent = (value) => {
 
 export const contentType = (dossier) => dossier?.contentType === 'evenement' || (!dossier?.contentType && dossier?.theme === 'Événement') ? 'evenement' : 'recit';
 
+export const EVENT_ICONS = Object.freeze({cedar:'Cèdre',mountain:'Montagne',baalbek:'Baalbek',book:'Livre',calendar:'Calendrier'});
+export const eventIcon = dossier => Object.hasOwn(EVENT_ICONS, dossier?.eventIcon) ? dossier.eventIcon : '';
+
+export function separateDossiers(state) {
+  if (state.otherDossier) return state;
+  const activeType = contentType(state.dossier);
+  const otherType = activeType === 'recit' ? 'evenement' : 'recit';
+  const otherProposals = state.proposals.filter(entry => contentType(entry.basis) === otherType);
+  const otherPublication = state.draft?.contentType === otherType ? state.draft : null;
+  if (!otherProposals.length && !otherPublication) return state;
+  const other = emptyState(otherType);
+  const latest = otherProposals.at(-1);
+  if (latest) other.dossier = snapshot(latest.basis);
+  other.proposals = otherProposals;
+  other.draft = otherPublication;
+  other.status = otherPublication ? (otherPublication.wordpressStatus === 'trash' ? 'Retiré du site' : 'Publié') : 'Proposition';
+  if (otherProposals.some(entry => entry.number === state.manualDraft?.fromVersion)) {
+    other.manualDraft = state.manualDraft;
+    other.correctionRequest = state.correctionRequest;
+  }
+  return {
+    ...state, otherDossier: other,
+    proposals: state.proposals.filter(entry => contentType(entry.basis) === activeType),
+    draft: otherPublication ? null : state.draft,
+    ...(other.manualDraft ? {manualDraft:null, correctionRequest:''} : {}),
+    ...(otherPublication ? {status:state.proposals.some(entry => contentType(entry.basis) === activeType) ? 'Proposition' : 'À compléter'} : {}),
+  };
+}
+
 export function publicationMedia(dossier) {
   if (dossier.mediaMode !== 'photos') return [];
   const available = (dossier.media || []).filter(item => item.admis !== false);
   if (contentType(dossier) !== 'evenement') return available;
+  if (eventIcon(dossier)) return [];
   return Object.hasOwn(dossier, 'eventImageId')
     ? available.filter(item => item.id === dossier.eventImageId).slice(0,1)
     : available.slice(0,1);
+}
+
+export function eventPreviewMatches(basis, dossier) {
+  const fields = value => {
+    const media = publicationMedia(value);
+    return [value.title, value.sourceText, value.sources, value.event, eventIcon(value),
+      value.eventVisualMode === 'photo' && media.length === 0, media];
+  };
+  return contentType(dossier) === 'evenement' && JSON.stringify(fields(basis)) === JSON.stringify(fields(dossier));
 }
 
 export function eventDetails(event = {}) {
@@ -161,7 +200,7 @@ export function proposalSlides(entry) {
 export function createProposal(state, output = suggestedOutput(state.dossier)) {
   if (state.status !== STATUSES[1] || !hasIntake(state.dossier)) throw new Error('Ajoutez un texte libre ou des images pour préparer le brouillon.');
   const next = snapshot(state);
-  const number = next.proposals.length + 1;
+  const number = (next.proposals.at(-1)?.number ?? 0) + 1;
   next.proposals.push({ number, at: new Date().toISOString(), basis: snapshot(next.dossier), output: snapshot(output), request: '' });
   next.status = STATUSES[2];
   next.history.push({ status: next.status, at: new Date().toISOString(), note: `Proposition V${number}` });
@@ -215,6 +254,10 @@ export function markReady(state) {
 export function validate(state, reviewer) {
   if (state.status === STATUSES[2]) state = markReady(state);
   if (state.status !== STATUSES[4]) throw new Error('La proposition doit être prête à valider.');
+  const latest = state.proposals.at(-1);
+  if (latest.output.siteEvent && !eventPreviewMatches(latest.basis, state.dossier)) {
+    throw new Error('La saisie a changé. Actualisez l’aperçu avant de publier.');
+  }
   const gaps = dossierGaps(state.proposals.at(-1).basis);
   if (gaps.length) throw new Error('Complétez le dossier avant de valider. Il manque ' + gaps.join(', ') + '.');
   if (!clean(reviewer)) throw new Error('Indiquez le nom de la personne qui valide.');
