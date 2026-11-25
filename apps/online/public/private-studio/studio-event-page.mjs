@@ -1,6 +1,8 @@
 import {eventDetails, eventIcon} from './studio-model.mjs';
 
-export const eventIconPreviewUrl = key => new URL(`./event-icons/pictogram-${key}.svg`, import.meta.url).href;
+export const eventIconPreviewUrl = key => /^\d{2}-[a-z]+(?:-[a-z]+)*$/.test(key)
+  ? new URL(`../dist/assets/pictogrammes/clair/${key}.svg`, import.meta.url).href
+  : new URL(`./event-icons/pictogram-${key}.svg`, import.meta.url).href;
 
 const invalidEvent = message => Object.assign(new Error(message), {status: 400});
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));

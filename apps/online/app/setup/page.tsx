@@ -10,7 +10,7 @@ export default async function Setup(){
   const access=resolveStudioAccess(env,user);
   const hostingManaged=access?.role==='owner'&&Boolean(env.N8N_STUDIO_WEBHOOK_TOKEN);
   return <main className="setup-shell">
-    <Image src="/dist/assets/logo.svg" alt="Héritage Libanais" width={180} height={60} unoptimized/>
+    <Image src="/dist/assets/signature-clair.svg" alt="Héritage Libanais" width={180} height={164} unoptimized/>
     <p className="eyebrow">STUDIO PRIVÉ</p>
     <h1>Connexions du Studio</h1>
     <h2>WordPress</h2>
