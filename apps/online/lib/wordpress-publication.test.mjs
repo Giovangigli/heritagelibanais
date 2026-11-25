@@ -78,6 +78,17 @@ test('the active Studio preview matches the published card and the cover follows
   assert.equal(wordpressPostFromProposal(withoutCover,slug,media).featured_media,undefined);
 });
 
+test('portrait cards keep text before the image when the two columns stack',()=>{
+  const proposal={basis:{...story.basis,mediaMode:'photos',media:[{id:'portrait',name:'Portrait'}]},output:{...story.output,slides:[
+    {title:'Couverture',layout:'cover'},
+    {body:'Texte avant le portrait',layout:'image-top',mediaIds:['portrait']},
+  ]}};
+  const media=[{mediaId:'portrait',url:'https://example.test/portrait.jpg'}];
+  const portraitCard=/<article[^>]+studio-card-image_haut[^>]*>.*<div class="new-slide-copy">.*Texte avant le portrait.*<div class="new-slide-media-group">.*portrait\.jpg/s;
+  assert.match(renderStoryPreview(proposal,media),portraitCard);
+  assert.match(wordpressPostFromProposal(proposal,slug,media).content,portraitCard);
+});
+
 test('French event date becomes a dated WordPress event that mailing can identify',()=>{
   const event={startDate:'22 novembre 2026',startTime:'18 h 30',venue:'Paris'};
   assert.equal(eventDateTime(event),'2026-11-22T18:30:00+01:00');
