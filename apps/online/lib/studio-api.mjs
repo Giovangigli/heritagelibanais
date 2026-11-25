@@ -5,7 +5,7 @@ import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
 import {handleInstagramRequest} from './instagram-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
-import {publicationMedia,validate} from '../public/private-studio/studio-model.mjs';
+import {contentType,publicationMedia,validate} from '../public/private-studio/studio-model.mjs';
 import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken,verifyWordPressEventPlugin,wordpressEventRegistrations} from './wordpress-publication.mjs';
 const WEBHOOK='https://giovangigli.app.n8n.cloud/webhook/heritage-studio-draft';
 const MAX_BODY=12*1024*1024;
@@ -84,6 +84,91 @@ async function n8nStatus(env,access,fetchImpl){
     return reason?result('unavailable',reason):result('ready',null);
   }catch(e){return result('unavailable',e.name==='TimeoutError'?'timeout':'upstream');}
 }
+async function publicationHash(parts) {
+  const digest=await crypto.subtle.digest('SHA-256',encoder.encode(JSON.stringify(parts)));
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+
+async function trackedPublication(db,workspaceId,type,state,slug) {
+  const find=key=>db.prepare(
+    'SELECT slug,post_id,url,status,version_hash FROM studio_wordpress_publications WHERE slug = ? AND user_id = ? AND type = ?'
+  ).bind(key,workspaceId,type).first();
+  const previous=await find(state.draft?.wordpressSlug || slug);
+  if(previous)return previous;
+  // Earlier releases keyed each published revision separately.
+  for(const entry of [...state.proposals].reverse()){
+    const hash=await publicationHash([workspaceId,entry.at,entry.number,entry.output]);
+    const legacy=await find('studio-'+hash.slice(0,24));
+    if(legacy)return legacy;
+  }
+  return null;
+}
+
+async function publishStudioDossier({env,access,revision,reviewer,preview,fetchImpl}) {
+  const db=database(env);
+  const workspaceId=access.workspaceUserId;
+  const token=crypto.randomUUID();
+  const now=Date.now();
+  const lock=await db.prepare(
+    'INSERT INTO studio_wordpress_publication_locks (user_id,token,expires_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at WHERE expires_at <= ?'
+  ).bind(workspaceId,token,now+15*60*1000,now).run();
+  if(!lock.meta.changes)throw error('Une publication est en cours. Attendez sa confirmation puis actualisez le dossier.',409);
+
+  try{
+    const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(workspaceId).first();
+    if((row?.revision ?? 0)!==revision||(!row&&preview===undefined))throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
+    const state=preview===undefined?JSON.parse(row.state_json):preview;
+    if(state?.schema!==1||!state.dossier||!Array.isArray(state.proposals)||!state.proposals.length||!Array.isArray(state.history))throw error('L’aperçu du dossier est invalide.',400);
+    let next;
+    try{next=validate(state,reviewer);}catch(e){throw error(e.message,409);}
+    const proposal=state.proposals.at(-1);
+    const type=contentType(proposal.basis);
+    const first=state.proposals[0];
+    const dossierHash=await publicationHash([workspaceId,type,first.at,first.number]);
+    const versionHash=await publicationHash([proposal.at,proposal.number,proposal.basis,proposal.output]);
+    const stableSlug='studio-'+dossierHash.slice(0,24);
+    const prior=await trackedPublication(db,workspaceId,type,state,stableSlug);
+    const slug=prior?.slug || stableSlug;
+    if(prior?.status==='trash')throw error('Cette publication a été retirée du site. Restaurez-la avant de la modifier.',409);
+
+    let post;
+    if(prior?.version_hash===versionHash){
+      post={id:prior.post_id,url:prior.url,status:'publish'};
+    }else{
+      const credential=await wordpressConnection(env,access);
+      if(proposal.output.siteEvent&&(proposal.output.event || proposal.basis.event)?.registrationMode==='site'){
+        await verifyWordPressEventPlugin(credential,fetchImpl);
+      }
+      const images=[];
+      for(const item of publicationMedia(proposal.basis)){
+        if(!item.id||!item.credit?.trim()||!item.rights?.trim())throw error('Complétez le crédit et les droits de chaque image avant publication.',409);
+        const object=await env.BUCKET?.get(workspaceId+'/media/'+item.id);
+        if(!object)throw error('Une image du dossier est introuvable dans le stockage privé.',409);
+        const contentType=object.httpMetadata?.contentType;
+        if(!['image/png','image/jpeg','image/webp'].includes(contentType))throw error('WordPress accepte ici les images PNG, JPEG et WebP. Convertissez les autres formats avant publication.',409);
+        const bytes=await object.arrayBuffer();
+        if(bytes.byteLength>10*1024*1024)throw error('Une image dépasse 10 Mo. Réduisez-la avant publication.',413);
+        images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit:item.credit});
+      }
+      post=await publishWordPressPost(credential,proposal,slug,fetchImpl,images,prior?.post_id ?? null);
+    }
+
+    next.draft={...next.draft,localSimulation:false,wordpressStatus:'publish',wordpressPostId:post.id,wordpressUrl:post.url,wordpressSlug:slug};
+    next.status='Publié';
+    next.history.push({status:'Publié',at:new Date().toISOString(),note:`Publication WordPress n°${post.id}`});
+    const publishedDossier={...next,otherDossier:undefined};
+    await db.prepare(
+      'INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at,state_json,version_hash) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET title=excluded.title,url=excluded.url,status=excluded.status,state_json=excluded.state_json,version_hash=excluded.version_hash'
+    ).bind(slug,workspaceId,post.id,proposal.output.title,type,post.url,'publish',new Date().toISOString(),JSON.stringify(publishedDossier),versionHash).run();
+    const saved=revision===0
+      ?await db.prepare('INSERT INTO studio_sessions (user_id,state_json,revision,updated_at) VALUES (?,?,1,?) ON CONFLICT(user_id) DO NOTHING').bind(workspaceId,JSON.stringify(next),new Date().toISOString()).run()
+      :await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(next),new Date().toISOString(),workspaceId,revision).run();
+    return json({state:next,revision:saved.meta.changes?revision+1:null,post});
+  }finally{
+    await db.prepare('DELETE FROM studio_wordpress_publication_locks WHERE user_id = ? AND token = ?').bind(workspaceId,token).run();
+  }
+}
+
 export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={}){
   try{
     if(request.method==='POST'&&new URL(request.url).pathname==='/api/events/register')return await registerForPublishedEvent(request,env,r=>bodyJson(r,4096),fetchImpl);
@@ -122,68 +207,25 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
       return json({ok:true});
     }
     if(path==='/api/publication/list'&&request.method==='GET'){
-      const rows=await database(env).prepare('SELECT post_id,title,type,url,status,created_at FROM studio_wordpress_publications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(access.workspaceUserId).all();
+      const rows=await database(env).prepare('SELECT post_id,title,type,url,status,created_at,state_json IS NOT NULL AS editable FROM studio_wordpress_publications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100').bind(access.workspaceUserId).all();
       return json({posts:rows.results||[]});
     }
-    if(path==='/api/publication/test'&&request.method==='POST'){
-      if(access.role!=='owner')throw error('Le test de publication est réservé au propriétaire du Studio.',403);
-      const {type}=await bodyJson(request);
-      if(!['recit','evenement'].includes(type))throw error('Type de test invalide.',400);
-      const date=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
-      const event={startDate:date,startTime:'18 h 00',venue:'Lieu de démonstration',city:'Paris'};
-      const title=type==='recit'?'TEST STUDIO — Récit de vérification':'TEST STUDIO — Événement de vérification';
-      const active=await database(env).prepare('SELECT post_id FROM studio_wordpress_publications WHERE user_id = ? AND title = ? AND status = ? LIMIT 1').bind(access.workspaceUserId,title,'publish').first();
-      if(active)throw error('Un test de ce type est déjà en ligne. Placez-le d’abord dans la corbeille.',409);
-      const proposal={basis:{sourceText:'Publication temporaire de vérification du Studio. Ce contenu ne fait pas partie de la programmation éditoriale.',contentType:type,...(type==='evenement'?{event}:{})},output:{title,summary:'Publication temporaire de vérification.',contentType:type,...(type==='evenement'?{event}:{})}};
-      const slug='studio-'+Array.from(crypto.getRandomValues(new Uint8Array(12))).map(x=>x.toString(16).padStart(2,'0')).join('');
-      const credential=await wordpressConnection(env,access);
-      const post=await publishWordPressPost(credential,proposal,slug,fetchImpl);
-      try{
-        await database(env).prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(slug,access.workspaceUserId,post.id,title,type,post.url,'publish',new Date().toISOString()).run();
-      }catch(e){await trashWordPressPost(credential,post.id,fetchImpl);throw e;}
-      return json({post});
+    if(path.startsWith('/api/publication/dossier/')&&request.method==='GET'){
+      const postId=Number(path.slice('/api/publication/dossier/'.length));
+      if(!Number.isSafeInteger(postId)||postId<1)throw error('Référence de publication invalide.');
+      const publication=await database(env).prepare(
+        "SELECT state_json,url FROM studio_wordpress_publications WHERE user_id = ? AND post_id = ? AND status = 'publish'"
+      ).bind(access.workspaceUserId,postId).first();
+      if(!publication?.state_json)throw error('Le dossier source de cette publication n’est pas disponible dans le Studio.',404);
+      const state=JSON.parse(publication.state_json);
+      state.draft.wordpressUrl=publication.url;
+      return json({state});
     }
     if(path==='/api/publication/publish'&&request.method==='POST'){
       const {reviewer:requestedReviewer,revision,preview}=await bodyJson(request);
-      const reviewer=preview===undefined?requestedReviewer:(user.fullName || user.displayName || user.email || "Équipe Studio").trim().slice(0,120);
-      if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision))throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
-      const db=database(env);
-      const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
-      if(preview===undefined&&(!row||row.revision!==revision))throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
-      const state=preview===undefined?JSON.parse(row.state_json):preview;
-      if(state?.schema!==1||!state.dossier||!Array.isArray(state.proposals)||!Array.isArray(state.history))throw error('L’aperçu du dossier est invalide.',400);
-      let next;
-      try{next=validate(state,reviewer);}catch(e){throw error(e.message,409);}
-      const proposal=state.proposals.at(-1);
-      const digest=await crypto.subtle.digest('SHA-256',encoder.encode(JSON.stringify([access.workspaceUserId,proposal.at,proposal.number,proposal.output])));
-      const slug='studio-'+Array.from(new Uint8Array(digest)).slice(0,12).map(x=>x.toString(16).padStart(2,'0')).join('');
-      const prior=await db.prepare('SELECT post_id,url,status FROM studio_wordpress_publications WHERE slug = ? AND user_id = ?').bind(slug,access.workspaceUserId).first();
-      if(prior?.status==='trash')throw error('Cette version a été retirée du site. Créez une nouvelle version avant de republier.',409);
-      const images=[];
-      let credential;
-      if(!prior?.post_id){
-        credential=await wordpressConnection(env,access);
-        if(proposal.output.siteEvent)await verifyWordPressEventPlugin(credential,fetchImpl);
-        for(const item of publicationMedia(proposal.basis)){
-          if(!item.id||!item.credit?.trim()||!item.rights?.trim())throw error('Complétez le crédit et les droits de chaque image avant publication.',409);
-          const object=await env.BUCKET?.get(access.workspaceUserId+'/media/'+item.id);
-          if(!object)throw error('Une image du dossier est introuvable dans le stockage privé.',409);
-          const contentType=object.httpMetadata?.contentType;
-          if(!['image/png','image/jpeg','image/webp'].includes(contentType))throw error('WordPress accepte ici les images PNG, JPEG et WebP. Convertissez les autres formats avant publication.',409);
-          const bytes=await object.arrayBuffer();
-          if(bytes.byteLength>10*1024*1024)throw error('Une image dépasse 10 Mo. Réduisez-la avant publication.',413);
-          images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit:item.credit});
-        }
-      }
-      const post=prior?.post_id?{id:prior.post_id,url:prior.url,status:'publish'}:await publishWordPressPost(credential,proposal,slug,fetchImpl,images);
-      await db.prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(slug) DO UPDATE SET post_id=excluded.post_id,url=excluded.url,status=excluded.status').bind(slug,access.workspaceUserId,post.id,proposal.output.title,proposal.output.contentType||proposal.basis.contentType||'recit',post.url,'publish',new Date().toISOString()).run();
-      next.draft={...next.draft,localSimulation:false,wordpressStatus:'publish',wordpressPostId:post.id,wordpressUrl:post.url,wordpressSlug:slug};
-      next.status='Publié';
-      next.history.push({status:'Publié',at:new Date().toISOString(),note:`Publication WordPress n°${post.id}`});
-      const saved=revision===0
-        ?await db.prepare('INSERT INTO studio_sessions (user_id,state_json,revision,updated_at) VALUES (?,?,1,?) ON CONFLICT(user_id) DO NOTHING').bind(access.workspaceUserId,JSON.stringify(next),new Date().toISOString()).run()
-        :await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(JSON.stringify(next),new Date().toISOString(),access.workspaceUserId,revision).run();
-      return json({state:next,revision:saved.meta.changes?revision+1:null,post});
+      const reviewer=preview===undefined?requestedReviewer:(user.fullName || user.displayName || user.email || 'Équipe Studio').trim().slice(0,120);
+      if(typeof reviewer!=='string'||reviewer.trim().length<2||reviewer.length>120||!Number.isSafeInteger(revision)||revision<0)throw error('Indiquez la personne qui valide et rechargez le dossier.',400);
+      return await publishStudioDossier({env,access,revision,reviewer,preview,fetchImpl});
     }
     if(path==='/api/publication/trash'&&request.method==='POST'){
       const {revision,postId}=await bodyJson(request);

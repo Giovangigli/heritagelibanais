@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=event-workspace">
+  <link rel="stylesheet" href="studio-mvp.css?v=v1-publication">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=event-workspace"></script>
+  <script type="module" src="studio-mvp.js?v=v1-publication"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -130,9 +130,10 @@
               <button id="discard-revision" type="button" class="button secondary">Annuler</button>
               <p id="revision-validation-error" class="hint error" role="status" hidden></p>
             </div>
-            <div id="site-event-preview" hidden>
-              <iframe id="site-event-frame" title="Aperçu de la page de l’événement sur WordPress" sandbox=""></iframe>
-            </div>
+            <details id="site-preview">
+              <summary>Aperçu de la page WordPress</summary>
+              <iframe id="site-preview-frame" title="Aperçu de la page WordPress" sandbox="" referrerpolicy="no-referrer"></iframe>
+            </details>
             <div id="card-workbench" class="card-workbench">
             <div class="card-editing">
             <section id="card-editor" class="card-editor" aria-labelledby="card-editor-title">
