@@ -76,10 +76,11 @@ try {
   const saved = await response.json();
   if (!response.ok) throw new Error(saved.error || 'La sauvegarde en ligne est indisponible.');
   const pending = localStorage.getItem(storageKey + '-pending') === 'true';
-  if (pending && saved.revision !== cloudRevision) {
-    cloudConflict = true;
-    $('cloud-save-status').textContent = 'Vos saisies locales sont conservées. Une autre fenêtre a enregistré une version plus récente ; rechargez après avoir conservé vos modifications.';
+  const sameDraft = pending && JSON.stringify(saved.state) === JSON.stringify(state);
+  if (pending && !sameDraft && saved.revision !== cloudRevision) {
+    showSessionConflict();
   } else {
+    if (sameDraft) localStorage.removeItem(storageKey + '-pending');
     if (!pending && saved.state?.schema === 1 && Array.isArray(saved.state.proposals)) state = saved.state;
     cloudRevision = saved.revision;
     localStorage.setItem(storageKey + '-revision', String(cloudRevision));
@@ -219,6 +220,7 @@ function replaceMap(target, source) {
   for (const [key, value] of source) target.set(key, value);
 }
 function resetDossier() {
+  if (publishing) return;
   discardResetUndo();
   state.dossier = structuredClone(readDossier());
   resetSnapshot = {
@@ -283,7 +285,7 @@ function openEditorialWorkspace(type) {
     $('correction-request').value = state.correctionRequest || '';
     feedback('');
     feedback('', false, 'compose-feedback');
-    setForm(); updateGaps(); render(); syncGenerationControls();
+    setForm(); updateGaps({save:false}); render(); syncGenerationControls();
     void restoreSavedMedia();
   }
   mailingTab(type === 'evenement' ? 'event' : 'editor');
@@ -297,21 +299,73 @@ function persist() {
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(saveCloudSession, 500);
 }
+function showSessionConflict(focus = false) {
+  cloudConflict = true;
+  $('session-conflict').hidden = false;
+  $('cloud-save-status').textContent = 'Vos modifications sont conservées dans cet onglet.';
+  if (focus) focusStep('session-conflict-title');
+}
 async function saveCloudSession() {
-  if (cloudSaving || !cloudPending || cloudConflict) return;
-  cloudSaving = true; cloudPending = false;
+  if (cloudSaving || !cloudPending || cloudConflict || publishing) return;
+  cloudSaving = true;
+  cloudPending = false;
+  let saved = false;
   $('cloud-save-status').textContent = 'Enregistrement du dossier…';
   try {
-    const response = await fetch('/api/session', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:structuredClone(state),revision:cloudRevision})});
+    const response = await fetch('/api/session', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:structuredClone(state),revision:cloudRevision}),signal:AbortSignal.timeout(10000)});
     const result = await response.json();
-    if (!response.ok) { if(response.status===409) cloudConflict=true; throw new Error(result.error || 'La sauvegarde en ligne a échoué.'); }
+    if (!response.ok) {
+      if (response.status===409) showSessionConflict();
+      throw new Error(result.error || 'La sauvegarde en ligne a échoué.');
+    }
     cloudRevision = result.revision;
     localStorage.setItem(storageKey + '-revision', String(cloudRevision));
     if (!cloudPending) localStorage.removeItem(storageKey + '-pending');
     $('cloud-save-status').textContent = 'Dossier et versions enregistrés dans votre espace privé.';
-  } catch (error) { $('cloud-save-status').textContent = error.message + ' Vos saisies restent dans ce navigateur.'; }
-  finally { cloudSaving = false; if(cloudPending && !cloudConflict) saveCloudSession(); }
+    saved = true;
+  } catch (error) {
+    cloudPending = true;
+    $('cloud-save-status').textContent = error.message + ' Vos saisies restent dans ce navigateur.';
+  } finally {
+    cloudSaving = false;
+    if (saved && cloudPending) void saveCloudSession();
+  }
+  return saved;
 }
+async function chooseSessionDraft(keepLocal) {
+  if (!cloudConflict || publishing || cloudSaving) return;
+  const buttons = [$('session-keep-local'),$('session-load-online')];
+  buttons.forEach(button => button.disabled = true);
+  try {
+    const response = await fetch('/api/session',{cache:'no-store',signal:AbortSignal.timeout(10000)});
+    const online = await response.json();
+    if (!response.ok) throw new Error(online.error || 'Le brouillon en ligne est indisponible.');
+    if (keepLocal) {
+      if (!window.confirm('Enregistrer le brouillon de cet onglet à la place du brouillon en ligne ?')) return;
+      cloudRevision = online.revision;
+      cloudPending = true;
+      cloudConflict = false;
+      if (!await saveCloudSession() || cloudConflict) {
+        showSessionConflict();
+        return;
+      }
+      $('session-conflict').hidden = true;
+      feedback('Brouillon repris. Vous pouvez le publier.');
+    } else {
+      if (!window.confirm('Charger le brouillon en ligne et abandonner les modifications de cet onglet ?')) return;
+      localStorage.setItem(storageKey,JSON.stringify(online.state));
+      localStorage.setItem(storageKey+'-revision',String(online.revision));
+      localStorage.removeItem(storageKey+'-pending');
+      location.reload();
+    }
+  } catch (error) {
+    feedback(error.message,true);
+  } finally {
+    buttons.forEach(button => button.disabled = false);
+  }
+}
+$('session-keep-local').addEventListener('click',()=>chooseSessionDraft(true));
+$('session-load-online').addEventListener('click',()=>chooseSessionDraft(false));
 async function uploadSavedMedia(id,file) {
   const response = await fetch('/api/media/' + encodeURIComponent(id), {method:'PUT',headers:{'Content-Type':file.type || 'image/svg+xml'},body:file});
   if(!response.ok) { const result=await response.json(); throw new Error(result.error || 'Image non enregistrée.'); }
@@ -329,7 +383,7 @@ async function restoreSavedMedia() {
   }));
   if(!session.isEpochCurrent(epoch))return;
   renderMedia();
-  updateGaps();
+  updateGaps({save:false});
   if(state.proposals.length)render();
 }
 function feedback(message, error = false, id = 'message') {
@@ -586,10 +640,10 @@ function renderPublicationImageMetadata(entry) {
     list.append(row);
   }
 }
-function updateGaps() {
+function updateGaps({save=true}={}) {
   const dossier = readDossier();
   state.dossier = structuredClone(dossier);
-  persist();
+  if (save) persist();
   if (dossier.contentType === 'evenement') {
     $('media-count').textContent = eventPhotoId ? 'Ajouter un fichier remplace l’image de cet événement.' : 'Choisissez une image.';
     if (currentProposal()?.output?.siteEvent) {
@@ -1414,25 +1468,38 @@ $('undo-reset').addEventListener('click', undoReset);
 $('validate').addEventListener('click', async () => {
   if (!$('final-confirmation').checked) return feedback('Confirmez la relecture du texte et des visuels.', true);
   if (publishing || (currentProposal() && eventPreviewOutdated(currentProposal()))) return;
+  if (cloudConflict) return showSessionConflict(true);
   publishing = true;
-  form.inert = true;
-  $('validation-panel').inert = true;
+  $('studio-workspace').inert = true;
   const button=$('validate');button.disabled=true;const updating=state.draft?.wordpressStatus==='publish';
   feedback(updating?'Mise à jour sur WordPress en cours…':'Publication sur WordPress en cours…');
   try {
     clearTimeout(cloudSaveTimer);
     while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
+    if (cloudConflict) return showSessionConflict(true);
     const response=await fetch('/api/publication/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:cloudRevision,preview:state}),signal:AbortSignal.timeout(25000)});
-    const result=await response.json();if(!response.ok)throw new Error(result.error||'La publication a échoué.');
-    state=result.state;cloudPending=false;cloudConflict=result.revision===null;
-    if(!cloudConflict)cloudRevision=result.revision;
-    localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
+    const result=await response.json();
+    if (result.code==='session_conflict') {
+      persist();
+      return showSessionConflict(true);
+    }
+    if(!response.ok)throw new Error(result.error||'La publication a échoué.');
+    state=result.state;
+    cloudPending=false;
+    localStorage.setItem(storageKey,JSON.stringify(state));
+    if (result.revision===null) {
+      localStorage.setItem(storageKey+'-pending','true');
+      showSessionConflict();
+    } else {
+      cloudRevision=result.revision;
+      localStorage.setItem(storageKey+'-revision',String(cloudRevision));
+      localStorage.removeItem(storageKey+'-pending');
+    }
     render();refreshPublicationList();feedback(updating?'Publication mise à jour. Vérifiez la page WordPress.':'Publié sur WordPress. Vérifiez la page.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }
   finally {
     publishing = false;
-    form.inert = false;
-    $('validation-panel').inert = false;
+    $('studio-workspace').inert = false;
     if (currentProposal()) updateProposalGaps(currentProposal());
   }
 });
@@ -2034,7 +2101,7 @@ setForm();
 mailingTab(contentType(state.dossier)==='evenement'?'event':'editor');
 $('main').inert=false;
 $('studio-loading').hidden=true;
-updateGaps();
+updateGaps({save:false});
 try {
   renderStoryTemplates();
   render();
