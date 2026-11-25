@@ -60,3 +60,6 @@
 
 #site-preview{margin-block:16px}
 #site-preview summary{cursor:pointer;font-weight:700;margin-bottom:8px}
+
+.story-preview-stage{position:relative;min-height:180px;overflow:hidden;background:var(--paper)}
+.story-preview-frame{position:absolute;inset:0 auto auto 0;border:0;transform-origin:top left;pointer-events:none}

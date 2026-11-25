@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {renderStoryPreview} from '../public/private-studio/studio-publication-page.mjs';
 import {eventDateTime,wordpressPostFromProposal,publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken} from './wordpress-publication.mjs';
 
 const slug='studio-0123456789abcdef01234567';
@@ -55,6 +56,26 @@ test('approved story composition is published as cards with their assigned image
   assert.match(cards[1],/class="[^"]*studio-image-cover"[^>]*>.*assigned\.jpg" alt="Légende alternative"/s);
   assert.match(cards[1],/<figcaption>Crédit facultatif<\/figcaption>/);
   assert.doesNotMatch(content,/Ancienne copie|unused\.jpg/);
+});
+
+test('the active Studio preview matches the published card and the cover follows its assigned image',()=>{
+  const basis={...story.basis,mediaMode:'photos',media:[{id:'inside',name:'Archive'},{id:'cover',name:'Couverture'}]};
+  const output={...story.output,slides:[
+    {title:'Couverture',layout:'cover',mediaIds:['cover']},
+    {title:'Archive',body:'Récit relu',layout:'split',mediaIds:['inside']},
+  ]};
+  const media=[
+    {id:17,mediaId:'inside',url:'https://example.test/archive.jpg'},
+    {id:18,mediaId:'cover',url:'https://example.test/cover.jpg'},
+  ];
+  const proposal={basis,output};
+  const post=wordpressPostFromProposal(proposal,slug,media);
+  assert.equal(post.featured_media,18);
+  const matchCards=html=>html.match(/<article[^>]+data-slide[^>]*>.*?<\/article>/gs);
+  const cards=matchCards(post.content);
+  assert.deepEqual(matchCards(renderStoryPreview(proposal,media)),cards);
+  const withoutCover={basis,output:{...output,slides:[{...output.slides[0],mediaIds:[]},output.slides[1]]}};
+  assert.equal(wordpressPostFromProposal(withoutCover,slug,media).featured_media,undefined);
 });
 
 test('French event date becomes a dated WordPress event that mailing can identify',()=>{

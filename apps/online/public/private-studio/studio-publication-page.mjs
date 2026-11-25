@@ -3,7 +3,7 @@ import {compositionToLegacy, ensureComposition, GABARITS, MEDIA_COUNTS} from './
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const paragraph = value => String(value ?? '').split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`).join('\n');
-export const STORY_PUBLICATION_FORMAT = 'story-carousel-v1';
+export const STORY_PUBLICATION_FORMAT = 'story-carousel-v2';
 
 function storyImage(item, placement = {}) {
   const fit = placement.fit === 'cover' ? ' studio-image-cover' : '';
@@ -22,7 +22,20 @@ function storySlides(proposal, uploadedMedia) {
   ];
 }
 
-function renderStoryPublication(proposal, uploadedMedia, sources) {
+export function storyCoverMedia(proposal, uploadedMedia) {
+  const cover = storySlides(proposal, uploadedMedia)[0];
+  if (!cover) return undefined;
+  const imageId = cover.mediaPlacements?.[0]?.media_id;
+  if (imageId) return uploadedMedia.find(item => item.mediaId === imageId);
+  if (!proposal.output.composition && !proposal.output.slides?.length) return uploadedMedia[0];
+  return undefined;
+}
+
+export function renderStoryPreview(proposal, media) {
+  return renderStoryPublication(proposal, media, '', true);
+}
+
+function renderStoryPublication(proposal, uploadedMedia, sources, preview = false) {
   const slides = storySlides(proposal, uploadedMedia);
   const mediaById = new Map(uploadedMedia.map(item => [item.mediaId, item]));
   const cards = slides.map((slide, index) => {
@@ -56,7 +69,10 @@ function renderStoryPublication(proposal, uploadedMedia, sources) {
     const number = `${index + 1} / ${slides.length}`;
     return `<article class="${classes}" data-slide aria-label="Carte ${index + 1} sur ${slides.length}"><div class="new-slide-top"><span>Héritage Libanais</span><span>${number}</span></div>${layout === 'image_haut' ? gallery + copy : copy + gallery}<div class="new-slide-foot"><span>Récit</span><span aria-hidden="true">•</span></div></article>`;
   });
-  const content = `<div class="hl-wp-story"><header class="container publication-detail-heading"><h1 class="section-title">${escapeHtml(proposal.output.title)}</h1></header><section class="container editorial-carousel new-editorial-carousel studio-story-carousel" aria-label="Cartes du récit"><div class="editorial-track" data-carousel-track role="region" tabindex="0" aria-label="${slides.length} cartes">${cards.join('')}</div>${sources}</section></div>`;
+  const heading = !preview
+    ? `<header class="container publication-detail-heading"><h1 class="section-title">${escapeHtml(proposal.output.title)}</h1></header>`
+    : '';
+  const content = `<div class="hl-wp-story">${heading}<section class="container editorial-carousel new-editorial-carousel studio-story-carousel" aria-label="Cartes du récit"><div class="editorial-track" data-carousel-track role="region" tabindex="0" aria-label="${slides.length} cartes">${cards.join('')}</div>${sources}</section></div>`;
   // User-authored text is literal on WordPress, including shortcode syntax.
   return content.replaceAll('[', '&#91;').replaceAll(']', '&#93;');
 }
