@@ -1152,8 +1152,13 @@ function wordpressPreviewStyles(extra = []) {
   const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
   const base = local ? (document.documentElement.dataset.wordpressPreviewOrigin || 'http://127.0.0.1:48888/') : 'https://heritage-libanais.fr/';
   const theme = new URL('/wp-content/themes/heritage-libanais/', base);
-  return ['design-system.css', 'stories.css', ...extra]
-    .map(file => `<link rel="stylesheet" href="${new URL(file, theme).href}">`).join('');
+  // WordPress.com caches unversioned theme assets across theme replacements.
+  const styles = ['design-system.css', 'stories.css'].map(file => {
+    const url = new URL(file, theme);
+    if (!local) url.searchParams.set('ver', '1.0.35');
+    return url.href;
+  });
+  return [...styles, ...extra].map(url => `<link rel="stylesheet" href="${url}">`).join('');
 }
 function renderWordPressPreview(entry) {
   const media=publicationMedia(entry.basis).flatMap(item=>{
