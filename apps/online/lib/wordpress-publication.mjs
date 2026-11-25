@@ -1,4 +1,5 @@
 import {eventDateTime, renderEventPage} from '../public/private-studio/studio-event-page.mjs';
+import {renderPublicationContent} from '../public/private-studio/studio-publication-page.mjs';
 import {eventIcon} from '../public/private-studio/studio-model.mjs';
 export {eventDateTime};
 
@@ -14,40 +15,13 @@ function wordpressAccess(connection) {
 }
 
 const failure = (message, status = 502) => Object.assign(new Error(message), { status });
-const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
-const paragraph = value => String(value ?? '').split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`).join('\n');
-function approvedBody(proposal) {
-  const slides=proposal.output.slides;
-  if(!Array.isArray(slides)||!slides.length)return paragraph(proposal.basis.sourceText);
-  return slides.map((slide,index)=>{
-    const title=String(slide.title||'').trim();
-    const heading=title&&title!==proposal.output.title?`<h2>${escapeHtml(title)}</h2>`:'';
-    const text=paragraph(slide.body);
-    return heading||text?`<section class="studio-card-copy" data-card="${index+1}">${heading}${text}</section>`:'';
-  }).join('\n');
-}
-function renderedContent(proposal, uploadedMedia = []) {
-  const { basis, output } = proposal;
-  const event = output.contentType === 'evenement' || basis.contentType === 'evenement';
-  const details = output.event || basis.event || {};
-  const body = approvedBody(proposal);
-  const figures = uploadedMedia.map(item => `<figure class="studio-image"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt)}"><figcaption>${escapeHtml(item.credit)}</figcaption></figure>`).join('\n');
-  const sources = basis.sources?.trim() ? `<section class="studio-sources"><h2>Sources</h2>${paragraph(basis.sources)}</section>` : '';
-  if (!event) return `<article class="editorial-carousel studio-publication"><div class="new-slide-copy">${body}</div>${figures}${sources}</article>`;
-  const eventDate = `${details.startDate || ''} ${details.startTime || ''}`.trim();
-  const time = `<time datetime="${eventDateTime(details)}">${escapeHtml(eventDate)}</time>`;
-  const practical = [details.venue, details.address, details.city, details.registrationUrl].filter(Boolean).map(value => `<p>${escapeHtml(value)}</p>`).join('');
-  const registrationClass = details.registrationUrl?.trim() ? '' : ' studio-native-registration';
-  return `<article class="event-hero studio-publication${registrationClass}">${time}<div class="event-story-copy">${body}</div>${figures}<section class="event-practical"><h2>Informations pratiques</h2>${practical}</section>${sources}</article>`;
-}
-
 export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
   if (!proposal?.output?.title?.trim() || (!proposal.output.siteEvent&&!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
   if (!/^studio-[a-f0-9]{24}$/.test(slug)) throw failure('Référence de publication invalide.', 400);
   return {
     title: proposal.output.title.trim(),
     excerpt: String(proposal.output.summary || '').trim(),
-    content: proposal.output.siteEvent ? renderEventPage(proposal, uploadedMedia[0]) : renderedContent(proposal, uploadedMedia),
+    content: proposal.output.siteEvent ? renderEventPage(proposal, uploadedMedia[0]) : renderPublicationContent(proposal, uploadedMedia),
     ...(uploadedMedia[0] && !(proposal.output.siteEvent && eventIcon(proposal.basis)) ? {featured_media:uploadedMedia[0].id} : {}),
     slug,
     status: 'publish',
@@ -60,7 +34,7 @@ async function requestWordPress(connection, url, options, fetchImpl) {
     ...options,
     headers: { Authorization: authorization, Accept: 'application/json', ...(options?.body ? {'Content-Type':'application/json'} : {}) },
     signal: AbortSignal.timeout(15000),
-  });
+  }).catch(()=>{throw failure('WordPress ne répond pas. Vérifiez la publication avant de réessayer.');});
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw failure(response.status === 401 || response.status === 403 ? 'La connexion WordPress a été refusée.' : `WordPress a refusé l’opération (${response.status}).`, response.status === 401 || response.status === 403 ? 503 : 502);
   return payload;
@@ -112,7 +86,9 @@ async function uploadMedia(connection, image, fetchImpl) {
   form.append('file',new Blob([image.bytes],{type:image.contentType}),image.name);
   form.append('alt_text',image.alt);
   form.append('caption',image.credit);
-  const response=await fetchImpl(url,{method:'POST',headers:{Authorization:authorization,Accept:'application/json'},body:form,signal:AbortSignal.timeout(30000)});
+  const response=await fetchImpl(url,{method:'POST',headers:{Authorization:authorization,Accept:'application/json'},body:form,signal:AbortSignal.timeout(30000)}).catch(()=>{
+    throw failure('Le transfert de l’image vers WordPress a échoué. Réessayez après avoir vérifié la connexion.');
+  });
   const payload=await response.json().catch(()=>null);
   if(!response.ok||!Number.isSafeInteger(payload?.id)||!payload?.source_url?.startsWith('https://'))throw failure('WordPress n’a pas accepté une image. La publication a été arrêtée.');
   return {id:payload.id,url:payload.source_url,alt:image.alt,credit:image.credit};
@@ -122,22 +98,43 @@ export async function uploadWordPressMedia(connection,image,fetchImpl=fetch){
   return uploadMedia(connection,image,fetchImpl);
 }
 
-export async function publishWordPressPost(connection, proposal, slug, fetchImpl = fetch, media = []) {
+export async function publishWordPressPost(connection, proposal, slug, fetchImpl = fetch, media = [], postId = null) {
   const {api}=wordpressAccess(connection);
-  const search = new URL(`${api}/posts`);
-  search.searchParams.set('slug', slug);
-  search.searchParams.set('context', 'edit');
-  const existing = await requestWordPress(connection, search.href, {method:'GET'}, fetchImpl);
-  if (Array.isArray(existing) && existing.length) {
-    const post = existing[0];
-    if (post.status !== 'publish') throw failure('Une publication WordPress existe déjà avec cette référence, mais son état doit être vérifié.', 409);
-    return {id:post.id,url:post.link,status:post.status};
+  if (postId === null) {
+    const search = new URL(`${api}/posts`);
+    search.searchParams.set('slug', slug);
+    search.searchParams.set('context', 'edit');
+    search.searchParams.set('status', 'publish,draft,pending,future,private,trash');
+    const existing = await requestWordPress(connection, search.href, {method:'GET'}, fetchImpl);
+    if (!Array.isArray(existing)) throw failure('WordPress n’a pas confirmé la disponibilité de cette référence.');
+    if (existing.length) {
+      const post = existing[0];
+      if (post.status !== 'publish' || !Number.isSafeInteger(post.id) || !post.link?.startsWith(`https://${SITE}/`)) {
+        throw failure('Une publication WordPress existe déjà avec cette référence, mais son état doit être vérifié.', 409);
+      }
+      postId=post.id;
+    }
+  } else {
+    const current = await requestWordPress(connection, `${api}/posts/${postId}?context=edit`, {method:'GET'}, fetchImpl);
+    if (current?.status !== 'publish' || current.id !== postId) {
+      throw failure('La publication WordPress a changé d’état. Vérifiez-la avant de la modifier.', 409);
+    }
   }
-  const uploaded=[];
+  const uploaded = [];
   const images = proposal.output.contentType === 'evenement' || proposal.basis.contentType === 'evenement' ? media.slice(0,1) : media;
-  for(const image of images) uploaded.push(await uploadMedia(connection,image,fetchImpl));
-  const post = await requestWordPress(connection, `${api}/posts`, {method:'POST',body:JSON.stringify(wordpressPostFromProposal(proposal, slug, uploaded))}, fetchImpl);
-  if (!Number.isSafeInteger(post?.id) || post.status !== 'publish' || !post.link?.startsWith(`https://${SITE}/`)) throw failure('WordPress a répondu sans publication vérifiable. Vérifiez le site avant de recommencer.');
+  for (const image of images) uploaded.push(await uploadMedia(connection,image,fetchImpl));
+  const payload = wordpressPostFromProposal(proposal, slug, uploaded);
+  if (postId !== null) {
+    // Keep the existing permalink even if an editor changed the WordPress slug.
+    delete payload.slug;
+    delete payload.status;
+    payload.featured_media ??= 0;
+  }
+  const endpoint = postId === null ? `${api}/posts` : `${api}/posts/${postId}`;
+  const post = await requestWordPress(connection, endpoint, {method:'POST',body:JSON.stringify(payload)}, fetchImpl);
+  if (!Number.isSafeInteger(post?.id) || (postId !== null && post.id !== postId) || post.status !== 'publish' || !post.link?.startsWith(`https://${SITE}/`)) {
+    throw failure('WordPress a répondu sans publication vérifiable. Vérifiez le site avant de recommencer.');
+  }
   return {id:post.id,url:post.link,status:post.status};
 }
 

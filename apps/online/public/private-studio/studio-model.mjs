@@ -136,7 +136,6 @@ export function saveDossier(state, dossier) {
   next.dossier = snapshot(dossier);
   next.status = hasIntake(dossier) ? STATUSES[1] : STATUSES[0];
   next.correctionRequest = '';
-  next.draft = null;
   next.history.push({ status: next.status, at: new Date().toISOString(), note: 'Dossier enregistré ou rouvert pour vérification' });
   return next;
 }

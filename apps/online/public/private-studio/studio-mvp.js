@@ -1,4 +1,5 @@
-import {renderEventPage, eventIconPreviewUrl} from './studio-event-page.mjs';
+import {eventIconPreviewUrl} from './studio-event-page.mjs';
+import {renderPublicationPreview} from './studio-publication-page.mjs';
 import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
@@ -120,6 +121,10 @@ async function refreshPublicationList(){
       const label=document.createElement('span');label.textContent=post.status==='publish'?' · En ligne':' · Dans la corbeille';
       item.append(link,label);
       if(post.status==='publish'){
+        if (post.editable || state.draft?.wordpressPostId === post.post_id || state.otherDossier?.draft?.wordpressPostId === post.post_id) {
+          const edit=document.createElement('button');edit.type='button';edit.className='button secondary';edit.textContent='Modifier dans le Studio';
+          edit.addEventListener('click',()=>openPublishedDossier(post,edit));item.append(edit);
+        }
         const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Retirer du site';
         button.addEventListener('click',()=>trashPublication(post.post_id));item.append(button);
       }else if(post.status==='trash'){
@@ -137,6 +142,47 @@ async function refreshPublicationList(){
     }
     status.textContent=result.posts?.length?`${result.posts.length} publication(s) créées depuis le Studio.`:'Aucune publication créée depuis le Studio.';
   }catch(error){status.textContent=error.message;}
+}
+
+async function openPublishedDossier(post,button) {
+  if (publishing) return;
+  const type=post.type==='evenement'?'evenement':'recit';
+  const target=contentType(state.dossier)===type?state:state.otherDossier;
+  const openEditor=()=>{
+    focusStep(type==='evenement'?'dossier-title':'card-editor-title');
+    feedback(type==='evenement'?'Modifiez la saisie puis actualisez l’aperçu.':'Modifiez les cartes puis validez une nouvelle version.');
+  };
+  if (target?.draft?.wordpressPostId===post.post_id) {
+    openEditorialWorkspace(type);
+    openEditor();
+    return;
+  }
+  if (hasIntake(target?.dossier || emptyState(type).dossier) && target.status!=='Publié') {
+    feedback('Terminez le brouillon de cet atelier avant d’ouvrir une autre publication.',true);
+    return;
+  }
+  button.disabled=true;
+  try {
+    const response=await fetch('/api/publication/dossier/'+post.post_id,{cache:'no-store',signal:AbortSignal.timeout(10000)});
+    const result=await response.json();
+    if (!response.ok) throw new Error(result.error || 'Le dossier source est indisponible.');
+    if (publishing || target!==(contentType(state.dossier)===type?state:state.otherDossier)) return;
+    openEditorialWorkspace(type);
+    resetDossier();
+    state={...result.state,otherDossier:state.otherDossier};
+    media=structuredClone(state.dossier.media || []);
+    selectedVersion=state.proposals.at(-1)?.number ?? 0;
+    setForm();
+    updateGaps();
+    render();
+    persist();
+    void restoreSavedMedia();
+    openEditor();
+  } catch(error) {
+    feedback(error.message,true);
+  } finally {
+    button.disabled=false;
+  }
 }
 
 function syncGenerationControls() {
@@ -587,7 +633,7 @@ function savePendingRevision() {
   const basis = structuredClone(previous.basis);
   if (output.contentType === 'evenement') basis.event = { ...emptyEvent(), ...structuredClone(output.event || {}) };
   const entry = { number, at: new Date().toISOString(), basis, output, request, diff: compositionDiff(canonicalOutput(previous).composition, output.composition) };
-  state.proposals.push(entry); state.status = 'Proposition'; state.draft = null; delete state.manualDraft;
+  state.proposals.push(entry); state.status = 'Proposition'; delete state.manualDraft;
   state.history.push({ status: state.status, at: entry.at, note: 'V' + number + ' · ' + request });
   selectedVersion = number;
   $('final-confirmation').checked = false;
@@ -608,6 +654,7 @@ function manualEdit(transform, rerenderEditor = false) {
     persist(); renderSlide(); renderVersionFeedback();
     if (rerenderEditor) renderCardEditor();
     renderEventOutput({ ...entry, output: readOutput() });
+    renderWordPressPreview({ ...entry, output: readOutput() });
     updateProposalGaps({ ...entry, output: readOutput() });
     const issues = manualCompositionIssues(comp);
     showCardEditIssues(issues);
@@ -649,6 +696,7 @@ function updateProposalGaps(entry) {
   note.hidden = !note.textContent;
   const blocked = Boolean(pendingRevision()) || versionGaps.length > 0 || missingPhotos || outdated;
   $('validate').disabled = publishing || Boolean(session.active) || blocked;
+  $('validate').textContent = state.draft?.wordpressStatus==='publish' ? 'Valider et mettre à jour sur le site' : 'Valider et publier sur le site';
 }
 function readOutput() {
   return pendingRevision()?.output ?? canonicalOutput();
@@ -916,12 +964,13 @@ function render() {
     $('version-request').textContent = entry.request ? 'Demande ayant conduit à cette version : ' + entry.request : '';
     const displayed = { ...entry, output: readOutput() };
     updateProposalGaps(displayed);
+    renderWordPressPreview(displayed);
     const siteEvent = displayed.output.siteEvent === true;
     $('review-title').textContent = siteEvent ? 'Aperçu sur le site' : 'Aperçu';
     $('review-help').textContent = siteEvent
       ? 'Relisez la page de l’événement. Modifiez-la depuis la saisie.'
       : 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
-    $('site-event-preview').hidden = !siteEvent;
+    if (siteEvent) $('site-preview').open = true;
     $('card-workbench').hidden = siteEvent;
     renderEventOutput(displayed);
     if (siteEvent) {
@@ -930,7 +979,6 @@ function render() {
       $('instruction-feedback').hidden = true;
       $('composition-diff').hidden = true;
       renderRevisionControls(entry);
-      renderSiteEvent(displayed);
     } else {
       renderSlide();
       renderCardEditor();
@@ -973,16 +1021,22 @@ function render() {
     li.append(strong, document.createTextNode(event.note + ' · '), time); history.append(li);
   });
 }
-function renderSiteEvent(entry) {
-  const media = publicationMedia(entry.basis)[0];
-  // A data URL lets the sandbox display private images without granting it access to the Studio origin.
-  const url = media && mediaPreviews.get(media.id)?.dataUrl;
-  const figure = url ? {url, alt:media.alt, credit:media.credit} : null;
-  const css = new URL('./event-page.css?v=2', import.meta.url).href;
-  const html = renderEventPage(entry, figure, {preview:true});
-  const frame = $('site-event-frame');
-  const srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${css}"><style>body{margin:0}</style>${html}</html>`;
-  if (frame.srcdoc !== srcdoc) frame.srcdoc = srcdoc;
+function renderWordPressPreview(entry) {
+  const media=publicationMedia(entry.basis).flatMap(item=>{
+    const url=mediaPreviews.get(item.id)?.dataUrl;
+    return url?[{url,alt:item.alt || entry.output.title,credit:item.credit}]:[];
+  });
+  const local=location.hostname==='127.0.0.1'||location.hostname==='localhost';
+  const theme=new URL('/wp-content/themes/heritage-libanais/',local?'http://127.0.0.1:48888/':'https://heritage-libanais.fr/');
+  const styles=['design-system.css','stories.css'];
+  if (entry.output.siteEvent) styles.push(new URL('./event-page.css?v=2',import.meta.url).href);
+  const links=styles.map(file=>`<link rel="stylesheet" href="${new URL(file,theme).href}">`).join('');
+  let html;
+  try { html=renderPublicationPreview(entry,media); }
+  catch { html='<p>Complétez les informations du dossier pour afficher l’aperçu WordPress.</p>'; }
+  const frame=$('site-preview-frame');
+  const srcdoc=`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${links}<body><main>${html}</main></body></html>`;
+  if (frame.srcdoc!==srcdoc) frame.srcdoc=srcdoc;
 }
 async function imageSource(file) {
   if (file.type !== 'image/svg+xml' && !/\.svg$/i.test(file.name)) {
@@ -1330,7 +1384,8 @@ $('validate').addEventListener('click', async () => {
   if (publishing || (currentProposal() && eventPreviewOutdated(currentProposal()))) return;
   publishing = true;
   form.inert = true;
-  const button=$('validate');button.disabled=true;feedback('Publication sur WordPress en cours…');
+  const button=$('validate');button.disabled=true;const updating=state.draft?.wordpressStatus==='publish';
+  feedback(updating?'Mise à jour sur WordPress en cours…':'Publication sur WordPress en cours…');
   try {
     clearTimeout(cloudSaveTimer);
     while(cloudSaving) await new Promise(resolve=>setTimeout(resolve,50));
@@ -1339,7 +1394,7 @@ $('validate').addEventListener('click', async () => {
     state=result.state;cloudPending=false;cloudConflict=result.revision===null;
     if(!cloudConflict)cloudRevision=result.revision;
     localStorage.setItem(storageKey,JSON.stringify(state));localStorage.setItem(storageKey+'-revision',String(cloudRevision));localStorage.removeItem(storageKey+'-pending');
-    render();refreshPublicationList();feedback('Publié sur WordPress. Vérifiez la page, puis préparez la Newsletter.');focusStep('draft-title');
+    render();refreshPublicationList();feedback(updating?'Publication mise à jour. Vérifiez la page WordPress.':'Publié sur WordPress. Vérifiez la page.');focusStep('draft-title');
   } catch(error) { feedback(error.message,true); }
   finally {
     publishing = false;

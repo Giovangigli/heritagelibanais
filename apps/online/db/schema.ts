@@ -36,8 +36,16 @@ export const wordpressPublications=sqliteTable('studio_wordpress_publications',{
   url:text('url').notNull(),
   status:text('status').notNull(),
   createdAt:text('created_at').notNull(),
+  stateJson:text('state_json'),
+  versionHash:text('version_hash'),
 });
 
+
+export const wordpressPublicationLocks = sqliteTable('studio_wordpress_publication_locks', {
+  userId:text('user_id').primaryKey(),
+  token:text('token').notNull(),
+  expiresAt:integer('expires_at').notNull(),
+});
 
 export const eventRegistrations = sqliteTable('studio_event_registrations', {
   id: text('id').primaryKey(),

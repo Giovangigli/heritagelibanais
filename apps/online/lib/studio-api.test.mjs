@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {readFileSync} from 'node:fs';
+import {readdirSync,readFileSync} from 'node:fs';
 import {handleStudioRequest,encryptToken,decryptToken} from './studio-api.mjs';
 import {buildCompositionInput} from '../public/private-studio/composition-v2.mjs';
 import {emptyState,saveDossier,createProposal,markReady} from '../public/private-studio/studio-model.mjs';
@@ -17,7 +17,7 @@ function configureWorkspace(env){
 }
 function setup(){
   const sql=new DatabaseSync(':memory:');
-  for(const name of ['0000_productive_mister_fear','0001_past_gressill','0002_empty_victor_mancha'])sql.exec(readFileSync(new URL(`../drizzle/${name}.sql`,import.meta.url),'utf8'));
+  for(const name of readdirSync(new URL('../drizzle/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort())sql.exec(readFileSync(new URL(`../drizzle/${name}`,import.meta.url),'utf8'));
   const objects=new Map();
   const env={
     STUDIO_CONNECTION_KEY:Buffer.alloc(32,7).toString('base64'),
@@ -28,7 +28,7 @@ function setup(){
     };}};}},
     BUCKET:{
       put:async(key,bytes,options)=>objects.set(key,{bytes,options}),
-      get:async key=>{const item=objects.get(key);return item?{body:item.bytes,httpMetadata:item.options.httpMetadata}:null;},
+      get:async key=>{const item=objects.get(key);return item?{body:item.bytes,httpMetadata:item.options.httpMetadata,arrayBuffer:async()=>new Response(item.bytes).arrayBuffer()}:null;},
     },
   };
   return {env,sql,objects};
@@ -205,33 +205,69 @@ test('owner stores a site application password encrypted and status never expose
   assert.equal(status.connected,true);
   assert(!JSON.stringify(status).includes(password));
 });
-test('owner can publish a disposable WordPress check without changing the saved dossier',async()=>{
-  const {env,sql}=setup();configureWorkspace(env);env.WORDPRESS_ACCESS_TOKEN='server-secret';
-  const original=emptyState();
-  sql.prepare('INSERT INTO studio_sessions VALUES (?,?,?,?)').run(user.userId,JSON.stringify(original),7,'now');
-  const fetchImpl=async(_url,init)=>{
-    if(init.method==='GET')return Response.json([]);
-    if(init.method==='POST')return Response.json({id:321,status:'publish',link:'https://heritage-libanais.fr/test-studio/'});
-    if(init.method==='DELETE')return Response.json({id:321,status:'trash'});
-  };
-  assert.equal((await handleStudioRequest(request('/api/publication/test','POST',{type:'recit'}),env,editor,{fetchImpl})).status,403);
-  const published=await handleStudioRequest(request('/api/publication/test','POST',{type:'recit'}),env,user,{fetchImpl});
-  assert.equal(published.status,200);
-  assert.equal((await published.json()).post.id,321);
-  assert.equal(sql.prepare('SELECT revision FROM studio_sessions').get().revision,7);
-  assert.deepEqual(JSON.parse(sql.prepare('SELECT state_json FROM studio_sessions').get().state_json),original);
-  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'publish');
-  assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{postId:321,revision:0}),env,user,{fetchImpl})).status,200);
-  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'trash');
-  assert.equal((await handleStudioRequest(request('/api/publication/restore','POST',{postId:321,revision:0}),env,user,{fetchImpl})).status,200);
-  assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'publish');
+test('the setup action cannot publish a fictitious post to public WordPress',async()=>{
+  const {env,sql}=setup();
+  configureWorkspace(env);
+  env.WORDPRESS_ACCESS_TOKEN='server-test-token';
+  let upstream=0;
+  const result=await handleStudioRequest(request('/api/publication/test','POST',{type:'recit'}),env,user,{
+    fetchImpl:async()=>{upstream++;return Response.json({});},
+  });
+  assert.equal(result.status,404);
+  assert.equal(upstream,0);
+  assert.equal(sql.prepare('SELECT COUNT(*) AS total FROM studio_wordpress_publications').get().total,0);
 });
 test('an older Studio publication remains removable after a new dossier replaces the current session',async()=>{
   const {env,sql}=setup();env.WORDPRESS_ACCESS_TOKEN='server-secret';
-  sql.prepare('INSERT INTO studio_wordpress_publications VALUES (?,?,?,?,?,?,?,?)').run('studio-0123456789abcdef01234567',user.userId,222,'Ancien récit','recit','https://heritage-libanais.fr/ancien/','publish','now');
+  sql.prepare('INSERT INTO studio_wordpress_publications (slug,user_id,post_id,title,type,url,status,created_at) VALUES (?,?,?,?,?,?,?,?)').run('studio-0123456789abcdef01234567',user.userId,222,'Ancien récit','recit','https://heritage-libanais.fr/ancien/','publish','now');
   const response=await handleStudioRequest(request('/api/publication/trash','POST',{revision:0,postId:222}),env,user,{fetchImpl:async(_url,init)=>{assert.equal(init.method,'DELETE');return Response.json({id:222,status:'trash'});}});
   assert.equal(response.status,200);assert.equal((await response.json()).state,null);
   const list=await(await handleStudioRequest(request('/api/publication/list'),env,user)).json();
   assert.equal(list.posts[0].status,'trash');
   assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{revision:0,postId:222}),env,{userId:'other'})).status,403);
+});
+
+
+test('publication rejects racing calls and updates the same WordPress post from a reopened dossier',async()=>{
+  const {env,sql}=setup();
+  configureWorkspace(env);
+  env.WORDPRESS_ACCESS_TOKEN='server-test-token';
+  const dossier={...emptyState().dossier,title:'Recette récit',sourceText:'Premier texte.'};
+  const draft=createProposal(saveDossier(emptyState(),dossier));
+  assert.equal((await handleStudioRequest(request('/api/session','PUT',{state:draft,revision:0}),env,user)).status,200);
+  const {promise:entered,resolve:notify}=Promise.withResolvers();
+  const {promise:finish,resolve:release}=Promise.withResolvers();
+  const calls=[];
+  const post={id:201,status:'publish',link:'https://heritage-libanais.fr/recette/'};
+  const fetchImpl=async(url,init)=>{
+    calls.push({url,method:init.method,body:init.body&&JSON.parse(init.body)});
+    if(init.method==='GET')return Response.json(url.includes('/posts/201?')?post:[]);
+    if(url.endsWith('/posts')){notify();await finish;}
+    return Response.json(post);
+  };
+  const submit=(revision,preview,actor)=>handleStudioRequest(
+    request('/api/publication/publish','POST',{revision,preview}),env,actor,{fetchImpl},
+  );
+  const first=submit(1,draft,user);
+  await entered;
+  const racing=await submit(1,draft,editor);
+  assert.equal(racing.status,409);
+  assert.match((await racing.json()).error,/en cours/);
+  release();
+  const created=await (await first).json();
+  assert.equal(created.post.id,201);
+  assert.equal((await submit(1,draft,editor)).status,409);
+  const reopened=await (await handleStudioRequest(request('/api/publication/dossier/201'),env,editor)).json();
+  assert.equal(reopened.state.draft.wordpressPostId,201);
+  const changed=createProposal(saveDossier(reopened.state,{...dossier,title:'Recette corrigée',sourceText:'Texte corrigé.'}));
+  const saved=await submit(created.revision,changed,editor);
+  assert.equal(saved.status,200);
+  const updated=await saved.json();
+  assert.equal(updated.post.id,201);
+  assert.equal(updated.post.url,created.post.url);
+  assert.equal(calls.filter(call=>call.method==='POST'&&call.url.endsWith('/posts')).length,1);
+  assert.equal(calls.at(-1).url.endsWith('/posts/201'),true);
+  assert.equal(calls.at(-1).body.title,'Recette corrigée');
+  assert.equal(Object.hasOwn(calls.at(-1).body,'slug'),false);
+  assert.equal(sql.prepare('SELECT title FROM studio_wordpress_publications').get().title,'Recette corrigée');
 });

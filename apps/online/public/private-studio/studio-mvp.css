@@ -49,4 +49,7 @@
 .event-icon-preview{width:88px;height:88px;padding:17px;object-fit:contain;background:#dce8df;border-top:2px solid #b82f2b}
 
 .event-registration-fields{margin-top:16px}
-#site-event-frame{display:block;width:100%;height:min(84vh,950px);min-height:480px;border:1px solid var(--line);background:#f7f4ec}
+#site-preview-frame{display:block;width:100%;height:min(84vh,950px);min-height:480px;border:1px solid var(--line);background:#f7f4ec}
+
+#site-preview{margin-block:16px}
+#site-preview summary{cursor:pointer;font-weight:700;margin-bottom:8px}
