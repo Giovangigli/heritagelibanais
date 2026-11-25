@@ -57,7 +57,25 @@ const sourceContent = (value) => {
 
 export const contentType = (dossier) => dossier?.contentType === 'evenement' || (!dossier?.contentType && dossier?.theme === 'Événement') ? 'evenement' : 'recit';
 
-export const EVENT_ICONS = Object.freeze({cedar:'Cèdre',mountain:'Montagne',baalbek:'Baalbek',book:'Livre',calendar:'Calendrier'});
+export const EVENT_ICONS = Object.freeze({
+  "01-rakwe": "Rakwé",
+  "02-tyr": "Tyr",
+  "03-cedre": "Cèdre",
+  "04-navire-phenicien": "Navire phénicien",
+  "05-baalbek": "Baalbek",
+  "06-grenade": "Grenade",
+  "07-olivier": "Olivier",
+  "08-mezze": "Mezzé",
+  "09-raouche": "Raouché",
+  "10-montagnes-village": "Montagnes et village",
+  "11-arcades": "Arcades",
+  "12-byblos": "Byblos",
+  "cedar": "Cèdre (ancien)",
+  "mountain": "Montagne (ancien)",
+  "baalbek": "Baalbek (ancien)",
+  "book": "Livre",
+  "calendar": "Calendrier"
+});
 export const eventIcon = dossier => Object.hasOwn(EVENT_ICONS, dossier?.eventIcon) ? dossier.eventIcon : '';
 
 export function separateDossiers(state) {

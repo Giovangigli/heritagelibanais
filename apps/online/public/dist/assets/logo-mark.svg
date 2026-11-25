@@ -1,19 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Emblème A+ de Héritage Libanais</title>
-  <circle cx="256" cy="256" r="256" fill="#064E38"/>
-  <g transform="translate(37 162)">
-  <path d="M0 164 120 8 205 105 250 54 295 109 350 43 439 164Z" fill="#A6BAAA"/>
-  <path d="M75 66 120 8 165 59 130 42 119 51 110 42ZM225 83 250 54 275 85 255 73 249 80 244 74ZM319 81 350 43 386 92 355 67 349 77 342 70Z" fill="#F8F6F0"/>
-  <path d="M75 66 120 8 165 59 M225 83 250 54 275 85 M319 81 350 43 386 92" fill="none" stroke="#F8F6F0" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M102 167 355 114l10 7-157 46Zm206 0 99-21 32 18-108 3Z" fill="#F8F6F0"/>
-  <g transform="translate(81 47) scale(.65)"><path d="M175 153c18-12 43-11 48-31-4-1-8-3-11-5-16 2-21-3-33-1-10 2-21 2-33 0 12-8 25-13 40-14 9 0 15-6 24-7-16-1-24-4-37-2-8 2-15 2-22 0 14-8 28-12 42-12 8-1 18-6 23-8-14 2-23 1-39 1 9-4 20-10 27-11 8-2 9-9 17-10 5 0 8-2 14-1 6 2 10 3 15 5 6 6 17 3 25 13-12 0-21 1-30 1-7-2-11 0-15 1 12 0 16 4 27 3 10-1 17 4 28 6 4 7 13 6 21 10-18 3-31 0-44 2-13 3-19 0-29 1 11 4 16 5 32 4 13 0 18 4 29 6 8 2 12 5 19 11-11 2-26-2-38-1-14 3-25 1-38 2 0 24 17 24 38 32-22 2-35-3-49-3-19 0-31 9-51 8Z" fill="#064E38" stroke="#F8F6F0" stroke-width="1.6" stroke-linejoin="round"/></g>
-  <path d="M32 138 Q54 153 80 151 H120 Q148 150 158 132 Q157 151 140 163 Q133 168 119 168 H67 Q43 168 32 138Z" fill="#064E38" stroke="#F8F6F0" stroke-width="1.5"/>
-  <path d="M84 94v57 M46 104h81 M46 104l38-10 43 10" fill="none" stroke="#064E38" stroke-width="2"/>
-  <path d="M49 105 Q87 108 124 105 L120 141 Q85 134 53 141Z" fill="#F8F6F0" stroke="#064E38" stroke-width="1"/>
-  <path d="M49 105l10 1 4 33-10 2Zm21 2 10 1 1 29-10 1Zm21 1h10l-1 29-10-1Zm21-1 12-2-4 36-10-2Z" fill="#B82F2B"/>
-  <path d="m78 159-6 6m20-6-6 6" stroke="#F8F6F0" stroke-width="2"/>
-  <path d="M343 103h64v8h-64Zm3 13h58v4h-58Zm2 4h6v32l-6 2Zm11 0h6v30l-6 1Zm11 0h6v28l-6 1Zm11 0h6v26l-6 1Zm11 0h6v24l-6 1Z" fill="#F8F6F0"/>
-  <path d="M346 114h58" stroke="#B82F2B" stroke-width="2"/>
-  <path d="M0 169h440v11H0Z" fill="#B8D2D1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 242" role="img" aria-labelledby="titre description"><title id="titre">Héritage Libanais</title><desc id="description"></desc>
+<g id="montagnes"><path d="M8 220 122 10 185 96 210 65 249 104 292 50 392 220Z" fill="#A6BAAA"/><path d="M74 98 122 10 166 70 132 52 122 65 112 55Z M185 96 210 65 241 96 216 83 210 90 204 83Z M249 104 292 50 322 101 303 80 293 90 285 81Z" fill="#F8F6F0"/><path d="M8 220 122 10 185 96 210 65 249 104 292 50 341 133" fill="none" stroke="#064E38" stroke-width="4" stroke-linejoin="miter"/></g>
+    <g id="cedre" transform="translate(142 134) scale(0.88)"><path fill="#064E38" d="M0 49 11 43 20 40 31 38 38 34 52 34 58 32 47 31 34 32 21 31 29 26 43 22 50 18 60 17 66 14 54 14 47 15 38 14 48 8 56 5 65 4 73 1 82 0 90 2 100 6 112 8 122 15 108 15 100 14 89 16 101 18 110 17 122 21 134 23 144 30 129 31 117 29 106 30 97 32 108 34 123 34 132 37 145 40 157 49 144 49 132 47 119 49 106 47 92 49 92 55 Q92 69 105 77 L126 85 103 84 83 79 65 84 42 86 62 76 Q75 67 76 56 L76 49 66 50 56 47 41 49 27 47 16 49Z"/></g>
+    <g id="baalbek" transform="translate(274 136) scale(0.87)">
+      <path d="M0 0H106V12H0Z" fill="#064E38" stroke="#F8F6F0" stroke-width="2.8"/>
+      <path d="M5 14H101V20H5Z" fill="#B82F2B"/>
+      <g fill="#064E38"><path d="M8 22H23V69H8Z"/><path d="M33 22H48V69H33Z"/><path d="M58 22H73V69H58Z"/><path d="M83 22H98V69H83Z"/><path d="M3 69H103V75H3Z"/></g>
+      
+    </g>
+    <g id="rive"><path d="M8 220H151L283 199H329L392 220Z" fill="#F8F6F0"/><path d="M155 220 283 202H329L386 220Z" fill="#A6BAAA"/></g>
+    <g id="nef" transform="translate(27 112) scale(0.88)">
+  <g id="mat" stroke="#064E38" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M77 7V95" stroke-width="4.5"/>
+    <path d="M38 25 77 8 124 25" stroke-width="2.6"/>
+    <path d="M31 25H128" stroke-width="4.4"/>
   </g>
+  <g id="voile">
+    <path d="M37 27H122Q112 60 123 83Q78 72 30 84Q30 52 37 27Z" fill="#F8F6F0"/>
+    <path d="M37 27H50Q41 55 43 81L30 84Q30 52 37 27Z M64 27H77Q69 53 70 77L57 79Q55 52 64 27Z M91 27H104Q97 54 99 79L85 77Q83 53 91 27Z M117 27H122Q112 60 123 83L111 80Q104 55 111 27Z" fill="#B82F2B"/>
+    <path d="M37 27H122Q112 60 123 83Q78 72 30 84Q30 52 37 27Z" stroke="#064E38" stroke-width="1.6" fill="none"/>
+  </g>
+  <g id="coque">
+    <path d="M9 84Q27 100 51 100H113Q141 100 152 77Q151 113 122 122H51Q23 118 9 84Z" fill="#064E38" stroke="#F8F6F0" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M65 109H72L64 117H57ZM84 109H91L83 117H76Z" fill="#F8F6F0"/>
+  </g></g>
+    <path id="mer" d="M8 224H392V237H8Z" fill="#467D88"/>
 </svg>
