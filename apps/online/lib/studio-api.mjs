@@ -116,7 +116,9 @@ async function publishStudioDossier({env,access,revision,reviewer,preview,fetchI
 
   try{
     const row=await db.prepare('SELECT state_json,revision FROM studio_sessions WHERE user_id = ?').bind(workspaceId).first();
-    if((row?.revision ?? 0)!==revision||(!row&&preview===undefined))throw error('Le dossier a changé. Rechargez-le avant de publier.',409);
+    if((row?.revision ?? 0)!==revision||(!row&&preview===undefined)){
+      return json({error:'Un autre brouillon a été enregistré en ligne. Choisissez celui à reprendre avant de publier.',code:'session_conflict'},409);
+    }
     const state=preview===undefined?JSON.parse(row.state_json):preview;
     if(state?.schema!==1||!state.dossier||!Array.isArray(state.proposals)||!state.proposals.length||!Array.isArray(state.history))throw error('L’aperçu du dossier est invalide.',400);
     let next;
@@ -300,11 +302,16 @@ export async function handleStudioRequest(request,env,user,{fetchImpl=fetch}={})
     if(path==='/api/session'&&request.method==='PUT'){
       const {state,revision}=await bodyJson(request);
       if(state?.schema!==1||!state.dossier||!Array.isArray(state.proposals)||!Array.isArray(state.history)||!Number.isSafeInteger(revision)||revision<0)throw error('La sauvegarde du dossier est invalide.');
-      const saved=JSON.stringify(state),now=new Date().toISOString();let result;
-      if(revision===0)result=await database(env).prepare('INSERT INTO studio_sessions (user_id, state_json, revision, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(user_id) DO NOTHING').bind(access.workspaceUserId,saved,now).run();
-      else result=await database(env).prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ?').bind(saved,now,access.workspaceUserId,revision).run();
-      if(!result.meta.changes)throw error('Une autre fenêtre a enregistré une version plus récente. Vos saisies restent dans ce navigateur. Rechargez pour retrouver la version en ligne.',409);
-      return json({ok:true,revision:revision+1});
+      const saved=JSON.stringify(state),now=new Date().toISOString();
+      const db=database(env);
+      const result=revision===0
+        ?await db.prepare('INSERT INTO studio_sessions (user_id, state_json, revision, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT(user_id) DO NOTHING').bind(access.workspaceUserId,saved,now).run()
+        :await db.prepare('UPDATE studio_sessions SET state_json = ?, revision = revision + 1, updated_at = ? WHERE user_id = ? AND revision = ? AND state_json <> ?').bind(saved,now,access.workspaceUserId,revision,saved).run();
+      if(result.meta.changes)return json({ok:true,revision:revision+1});
+      // An unchanged save or a retry after a lost response can reuse the existing revision.
+      const current=await db.prepare('SELECT state_json, revision FROM studio_sessions WHERE user_id = ?').bind(access.workspaceUserId).first();
+      if(current?.state_json===saved)return json({ok:true,revision:current.revision});
+      return json({error:'Un autre brouillon a été enregistré en ligne. Vos saisies restent dans cet onglet.',code:'session_conflict'},409);
     }
     if(path==='/api/email/preview'&&request.method==='POST'){
       const {type,input}=await bodyJson(request);

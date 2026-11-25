@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=p0-credits-images">
+  <link rel="stylesheet" href="studio-mvp.css?v=reprise-brouillon">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=p0-credits-images"></script>
+  <script type="module" src="studio-mvp.js?v=reprise-brouillon"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -214,6 +214,14 @@
     </div>
     <p id="cloud-save-status" class="hint" role="status"></p>
     <p id="message" class="feedback" role="status" aria-live="polite"></p>
+    <section id="session-conflict" class="reset-notice" aria-labelledby="session-conflict-title" hidden>
+      <h3 id="session-conflict-title" tabindex="-1">Deux versions du brouillon</h3>
+      <p>Une autre sauvegarde existe en ligne. Vos modifications restent dans cet onglet. Choisissez le brouillon à reprendre.</p>
+      <div class="action-row">
+        <button id="session-keep-local" type="button" class="button primary">Garder ce brouillon</button>
+        <button id="session-load-online" type="button" class="button secondary">Charger le brouillon en ligne</button>
+      </div>
+    </section>
     <section class="history" aria-labelledby="history-title"><h2 id="history-title">Historique des étapes</h2><ol id="history-list"></ol></section>
     <section class="history" aria-labelledby="publications-title"><h2 id="publications-title">Publications du site</h2><button id="publications-refresh" type="button" class="button secondary">Actualiser</button><p id="publications-status" class="hint" role="status"></p><ul id="publications-list"></ul></section>
     <p class="local-note">Studio privé. Vos dossiers, versions et images sont enregistrés dans votre espace. Le modèle reçoit des aperçus des images. Une validation publie l’article sur WordPress.</p>

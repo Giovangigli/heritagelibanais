@@ -58,7 +58,10 @@ test('rejected credentials do not replace a working connection',async()=>{
 test('concurrent session saves cannot overwrite a newer version and users remain isolated',async()=>{
   const {env}=setup();const state={schema:1,dossier:{sourceText:'Texte manuel.'},proposals:[],history:[]};
   let result=await handleStudioRequest(request('/api/session','PUT',{state,revision:0}),env,user);assert.equal(result.status,200);
-  assert.equal((await handleStudioRequest(request('/api/session','PUT',{state,revision:0}),env,user)).status,409);
+  const divergent={...state,dossier:{sourceText:'Saisie dans un autre onglet.'}};
+  const rejected=await handleStudioRequest(request('/api/session','PUT',{state:divergent,revision:0}),env,user);
+  assert.equal(rejected.status,409);
+  assert.equal((await rejected.json()).code,'session_conflict');
   const saved=await(await handleStudioRequest(request('/api/session'),env,user)).json();assert.deepEqual(saved.state,state);assert.equal(saved.revision,1);
   assert.equal((await(await handleStudioRequest(request('/api/session'),env,{userId:'other'})).json()).state,null);
 });
@@ -308,4 +311,23 @@ test('publication rejects racing calls and updates the same WordPress post from 
   assert.equal(calls.at(-1).body.title,'Recette corrigée');
   assert.equal(Object.hasOwn(calls.at(-1).body,'slug'),false);
   assert.equal(sql.prepare('SELECT title FROM studio_wordpress_publications').get().title,'Recette corrigée');
+});
+
+test('resaving the same draft from another tab does not invalidate publication',async()=>{
+  const {env,sql}=setup();
+  env.WORDPRESS_ACCESS_TOKEN='test-credential';
+  const initial=emptyState();
+  const dossier={...initial.dossier,title:'Récit de recette',sourceText:'Texte à publier.'};
+  const state=createProposal(saveDossier(initial,dossier));
+  const write=revision=>handleStudioRequest(request('/api/session','PUT',{state,revision}),env,user);
+  assert.equal((await (await write(0)).json()).revision,1);
+  assert.equal((await (await write(1)).json()).revision,1);
+  assert.equal((await (await write(0)).json()).revision,1);
+  const fetchImpl=async(_url,init)=>init.method==='GET'?Response.json([]):
+    Response.json({id:79,status:'publish',link:'https://heritage-libanais.fr/recette/'});
+  const publish=await handleStudioRequest(request('/api/publication/publish','POST',{revision:1,preview:state}),env,user,{fetchImpl});
+  const result=await publish.json();
+  assert.equal(publish.status,200,result.error);
+  assert.equal(result.post.id,79);
+  assert.equal(sql.prepare('SELECT revision FROM studio_sessions').get().revision,2);
 });
