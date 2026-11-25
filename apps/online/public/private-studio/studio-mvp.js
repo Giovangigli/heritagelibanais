@@ -1,6 +1,7 @@
 import {eventIconPreviewUrl,renderEventPage} from './studio-event-page.mjs';
 import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
+import {renderStoryPreview} from './studio-publication-page.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -237,7 +238,7 @@ function resetDossier() {
   $('final-confirmation').checked = false;
   $('correction-request').value = '';
   feedback('', false, 'compose-feedback');
-  $('slide-frame').replaceChildren();
+  updateStoryPreview('');
   $('dossier-details').open = false;
   setForm(); updateGaps(); render(); syncGenerationControls();
   $('reset-notice').hidden = false;
@@ -992,26 +993,64 @@ function renderStoryTemplates() {
     resize.observe(stage);
   }
 }
-function renderSlide() {
-  const comp=currentComposition(); const frame=$('slide-frame');
-  if (!comp?.cartes?.length) { frame.replaceChildren(); return; }
-  slideIndex=Math.max(0,Math.min(slideIndex,comp.cartes.length-1));
-  const card=comp.cartes[slideIndex];
-  renderCardFrame(frame, comp, card, slideIndex);
-  $('visual-direction').textContent='Gabarit : '+templateLabel(card.gabarit)+'.';
-  $('slide-counter').textContent=(slideIndex+1)+' / '+comp.cartes.length;
-  $('slide-prev').disabled=slideIndex<=0;$('slide-next').disabled=slideIndex>=comp.cartes.length-1;
-  fitSlidePreview();
+let storyPreviewMarkup = '';
+function fitStoryPreview() {
+  const stage = $('slide-stage');
+  const frame = $('slide-frame');
+  const viewportWidth = document.documentElement.clientWidth;
+  frame.style.width = viewportWidth + 'px';
+  const box = frame.contentDocument?.querySelector('.studio-story-carousel');
+  if (!box || !stage.clientWidth) return;
+  const bounds = box.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const scale = Math.min(1, stage.clientWidth / bounds.width);
+  const left = (stage.clientWidth - bounds.width * scale) / 2 - bounds.left * scale;
+  frame.style.height = Math.ceil(bounds.height) + 'px';
+  frame.style.transform = `translateX(${left}px) scale(${scale})`;
+  stage.style.height = Math.ceil(bounds.height * scale) + 'px';
+
+  const track = box.querySelector('[data-carousel-track]');
+  const cards = track.children;
+  if (cards[slideIndex]) track.scrollLeft = cards[slideIndex].offsetLeft - cards[0].offsetLeft;
 }
-function fitSlidePreview() {
-  const stage=$('slide-stage'),frame=$('slide-frame');
-  if(!stage.clientWidth||!frame.children.length)return;
-  frame.style.setProperty('--preview-scale',String(stage.clientWidth/1080));
-  const copy=frame.querySelector('.slide-copy'),gallery=frame.querySelector('.slide-gallery');
-  const fixed=frame.classList.contains('story-template');
-  if(gallery&&!fixed) gallery.style.height=Math.max(160,Math.min(420,1350-104-72-copy.scrollHeight-32))+'px';
-  const dense=fixed ? copy.scrollHeight>copy.clientHeight+2 : frame.scrollHeight>1352 || [copy,gallery].some(element=>element&&element.offsetTop+element.offsetHeight>1279);
-  $('slide-fit-warning').textContent=dense?'Cette carte est trop chargée. Répartissez son texte sur une autre carte.':'';
+function updateStoryPreview(markup) {
+  const frame = $('slide-frame');
+  const changed = storyPreviewMarkup !== markup;
+  storyPreviewMarkup = markup;
+  const content = frame.contentDocument?.getElementById('story-preview-content');
+  if (content) {
+    if (changed) content.innerHTML = markup;
+    fitStoryPreview();
+    return;
+  }
+  if (frame.srcdoc) return;
+  frame.addEventListener('load', () => {
+    const host = frame.contentDocument?.getElementById('story-preview-content');
+    if (!host) return;
+    host.innerHTML = storyPreviewMarkup;
+    new ResizeObserver(fitStoryPreview).observe(host);
+    fitStoryPreview();
+  }, {once:true});
+  frame.srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${wordpressPreviewStyles()}<style>body{margin:0;overflow:hidden}.hl-wp-story{margin:0 auto;padding:0}.hl-wp-story .studio-story-carousel .editorial-track{scroll-behavior:auto;scrollbar-width:none}</style><body><main id="story-preview-content"></main></body></html>`;
+}
+function renderSlide() {
+  const entry = currentProposal();
+  const output = readOutput();
+  const comp = output.composition;
+  if (!entry || !comp?.cartes?.length) { updateStoryPreview(''); return; }
+  slideIndex = Math.max(0, Math.min(slideIndex, comp.cartes.length - 1));
+  const card = comp.cartes[slideIndex];
+  const images = publicationMedia(entry.basis).flatMap(item => {
+    const url = mediaUrls.get(item.id);
+    return url ? [{mediaId:item.id, url, alt:item.alt || item.name, credit:item.credit?.trim()}] : [];
+  });
+  updateStoryPreview(renderStoryPreview({...entry, output}, images));
+  $('visual-direction').textContent = 'Gabarit : ' + templateLabel(card.gabarit) + '.';
+  $('slide-counter').textContent = (slideIndex + 1) + ' / ' + comp.cartes.length;
+  $('slide-prev').disabled = slideIndex <= 0;
+  $('slide-next').disabled = slideIndex >= comp.cartes.length - 1;
+  $('slide-fit-warning').textContent = card.medias.some(placement => placement.media_id && !mediaUrls.has(placement.media_id))
+    ? 'Rattachez les images manquantes pour vérifier cette carte.' : '';
 }
 const practicalLabels={titre_affiche:'Titre de l’affiche',date_debut:'Date de début',date_fin:'Date de fin',heure_debut:'Heure de début',heure_fin:'Heure de fin',fuseau:'Fuseau horaire',lieu:'Lieu',adresse:'Adresse',ville:'Ville',intervenants:'Intervenants',inscription:'Modalités d’inscription',lien_inscription:'Lien d’inscription',tarif:'Tarif',contact:'Contact'};
 
@@ -1109,16 +1148,19 @@ function render() {
     li.append(strong, document.createTextNode(event.note + ' · '), time); history.append(li);
   });
 }
+function wordpressPreviewStyles(extra = []) {
+  const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+  const base = local ? (document.documentElement.dataset.wordpressPreviewOrigin || 'http://127.0.0.1:48888/') : 'https://heritage-libanais.fr/';
+  const theme = new URL('/wp-content/themes/heritage-libanais/', base);
+  return ['design-system.css', 'stories.css', ...extra]
+    .map(file => `<link rel="stylesheet" href="${new URL(file, theme).href}">`).join('');
+}
 function renderWordPressPreview(entry) {
   const media=publicationMedia(entry.basis).flatMap(item=>{
     const url=mediaPreviews.get(item.id)?.dataUrl;
     return url?[{url,alt:item.alt || entry.output.title,credit:typeof item.credit==='string'?item.credit.trim():''}]:[];
   });
-  const local=location.hostname==='127.0.0.1'||location.hostname==='localhost';
-  const theme=new URL('/wp-content/themes/heritage-libanais/',local?'http://127.0.0.1:48888/':'https://heritage-libanais.fr/');
-  const styles=['design-system.css','stories.css'];
-  styles.push(new URL('./event-page.css?v=2',import.meta.url).href);
-  const links=styles.map(file=>`<link rel="stylesheet" href="${new URL(file,theme).href}">`).join('');
+  const links = wordpressPreviewStyles([new URL('./event-page.css?v=2',import.meta.url).href]);
   let html;
   try { html=renderEventPage(entry,media[0],{preview:true}); }
   catch { html='<p>Complétez les informations du dossier pour afficher l’aperçu WordPress.</p>'; }
@@ -2117,8 +2159,8 @@ void refreshConnectionsOverview();
 refreshWordPressConnection();
 refreshPublicationList();
 window.addEventListener('focus',()=>refreshBridgeStatus());
-new ResizeObserver(fitSlidePreview).observe($('slide-stage'));
-document.fonts.ready.then(fitSlidePreview);
+window.addEventListener('resize', fitStoryPreview);
+new ResizeObserver(fitStoryPreview).observe($('slide-stage'));
 void restoreSavedMedia().catch(error => {
   console.error('Studio media restoration failed', error);
   feedback('Certaines images n’ont pas pu être restaurées. Vous pouvez les rattacher dans la saisie.', true, 'compose-feedback');

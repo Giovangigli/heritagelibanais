@@ -1,5 +1,5 @@
 import {eventDateTime, renderEventPage} from '../public/private-studio/studio-event-page.mjs';
-import {renderPublicationContent} from '../public/private-studio/studio-publication-page.mjs';
+import {renderPublicationContent,storyCoverMedia} from '../public/private-studio/studio-publication-page.mjs';
 import {eventIcon} from '../public/private-studio/studio-model.mjs';
 export {eventDateTime};
 
@@ -18,11 +18,13 @@ const failure = (message, status = 502) => Object.assign(new Error(message), { s
 export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
   if (!proposal?.output?.title?.trim() || (!proposal.output.siteEvent&&!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length&&!proposal?.output?.composition?.cartes?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
   if (!/^studio-[a-f0-9]{24}$/.test(slug)) throw failure('Référence de publication invalide.', 400);
+  const event = proposal.output.contentType === 'evenement' || proposal.basis.contentType === 'evenement';
+  const cover = event ? (proposal.output.siteEvent && eventIcon(proposal.basis) ? undefined : uploadedMedia[0]) : storyCoverMedia(proposal, uploadedMedia);
   return {
     title: proposal.output.title.trim(),
     excerpt: String(proposal.output.summary || '').trim(),
     content: proposal.output.siteEvent ? renderEventPage(proposal, uploadedMedia[0]) : renderPublicationContent(proposal, uploadedMedia),
-    ...(uploadedMedia[0] && !(proposal.output.siteEvent && eventIcon(proposal.basis)) ? {featured_media:uploadedMedia[0].id} : {}),
+    ...(cover ? {featured_media:cover.id} : {}),
     slug,
     status: 'publish',
   };
