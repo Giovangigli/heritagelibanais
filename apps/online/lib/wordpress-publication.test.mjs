@@ -8,13 +8,53 @@ const story={basis:{sourceText:'Un texte <à relire>.\n\nSecond paragraphe.',sou
 test('WordPress article keeps source paragraphs, escapes HTML and identifies the Récit for mailing',()=>{
   const post=wordpressPostFromProposal(story,slug);
   assert.equal(post.status,'publish');
-  assert.match(post.content,/class="editorial-carousel/);
+  assert.match(post.content,/class="container editorial-carousel/);
   assert.match(post.content,/&lt;à relire&gt;/);
   assert.match(post.content,/Archive &amp; livre/);
   assert(!post.content.includes('<à relire>'));
   const edited=wordpressPostFromProposal({...story,output:{...story.output,slides:[{title:'Un récit',body:''},{title:'La suite',body:'Texte validé par Joseph.'}]}},slug);
   assert.match(edited.content,/Texte validé par Joseph/);
   assert(!edited.content.includes('Un texte &lt;à relire&gt;'));
+});
+
+test('approved story composition is published as cards with their assigned images',async()=>{
+  const composition={
+    contrat:'hl.composition.2',type:'recit',pratique:[],alertes:[],
+    textes:[{id:'title',role:'titre',texte:'Couverture validée',separateur:''},
+      {id:'body',role:'corps',texte:'Texte de la deuxième carte.',separateur:''}],
+    cartes:[
+      {id:'cover',gabarit:'couverture',fond:'sand',blocs:['title'],medias:[],champs:[]},
+      {id:'second',gabarit:'colonnes',fond:'sage',relief:'filet',blocs:['body'],
+        medias:[{media_id:'assigned',alt:'Légende alternative',fit:'cover'}],champs:[]},
+    ],
+  };
+  const proposal={...story,output:{...story.output,composition,
+    slides:[{title:'Ancienne copie du titre'},{body:'Ancienne copie du texte'}]}};
+  let content;
+  const fetchImpl=async(url,options)=>{
+    if(options.method==='GET')return Response.json([]);
+    if(url.endsWith('/media')){
+      const name=options.body.get('file').name;
+      return Response.json({id:name==='assigned.jpg'?72:73,source_url:'https://heritage-libanais.fr/'+name});
+    }
+    ({content}=JSON.parse(options.body));
+    return Response.json({id:36,status:'publish',link:'https://heritage-libanais.fr/test/'});
+  };
+  const image={bytes:new Uint8Array([1]),contentType:'image/jpeg',alt:'Image',credit:''};
+  await publishWordPressPost('token',proposal,slug,fetchImpl,[
+    {...image,mediaId:'unused',name:'unused.jpg'},
+    {...image,mediaId:'assigned',name:'assigned.jpg',credit:'Crédit facultatif'},
+  ]);
+  assert.match(content,/class="editorial-track" data-carousel-track/);
+  const cards=content.match(/<article[^>]+data-slide[^>]*>.*?<\/article>/gs);
+  assert.equal(cards.length,2);
+  assert.match(cards[0],/studio-card-sand[^>]*>.*Couverture validée/s);
+  assert.doesNotMatch(cards[0],/assigned\.jpg/);
+  assert.match(cards[1],/studio-card-colonnes .*studio-card-filet/);
+  assert.match(cards[1],/Texte de la deuxième carte/);
+  assert.match(cards[1],/class="[^"]*studio-image-cover"[^>]*>.*assigned\.jpg" alt="Légende alternative"/s);
+  assert.match(cards[1],/<figcaption>Crédit facultatif<\/figcaption>/);
+  assert.doesNotMatch(content,/Ancienne copie|unused\.jpg/);
 });
 
 test('French event date becomes a dated WordPress event that mailing can identify',()=>{
