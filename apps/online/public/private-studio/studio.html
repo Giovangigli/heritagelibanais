@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=polishing-v1">
-  <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=polishing-v1"></script>
+  <link rel="stylesheet" href="studio-mvp.css?v=gabarits-v1">
+  <link rel="stylesheet" href="studio-preview.css?v=gabarits-v1">
+  <script type="module" src="studio-mvp.js?v=gabarits-v1"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -117,7 +117,7 @@
           </div>
           <section id="story-template-info" class="template-info" popover aria-labelledby="template-info-title">
             <div class="template-info-heading"><h3 id="template-info-title">Gabarits de récit</h3><button type="button" class="button secondary" popovertarget="story-template-info" popovertargetaction="hide">Fermer</button></div>
-            <p class="hint">Le Studio choisit un gabarit selon les proportions des images. Vous pouvez l’ajuster pendant la relecture.</p>
+            <p class="hint">Chaque gabarit fixe la place du texte et des images. Le Studio en propose un selon les proportions des images. Vous pouvez en choisir un autre pendant la relecture.</p>
             <div id="story-template-list" class="story-template-list"></div>
           </section>
           <div id="proposal-empty" class="empty">Votre proposition apparaîtra ici après la composition.</div>
@@ -176,39 +176,40 @@
             <p id="validation-gaps" class="pending-note"></p>
           </div>
         </section>
-        <section id="validation-panel" class="panel validation-panel" aria-labelledby="validation-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title">Publier sur le site</h2></div>
-          <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
-          <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
-          <details id="publication-image-metadata" class="publication-image-metadata" hidden>
-            <summary>Crédits et droits des images (facultatif)</summary>
-            <div id="publication-images" class="fields"></div>
-          </details>
-          <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
-          <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
-        </section>
-        <section id="draft-panel" class="panel draft-panel" aria-labelledby="draft-title" hidden>
-          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>
-          <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/embleme-clair.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span id="wordpress-status" class="draft-chip">PUBLICATION WORDPRESS</span></div></article>
-          <p id="draft-details" class="hint"></p>
-          <div class="action-row"><a id="wordpress-link" class="button secondary" href="#" target="_blank" rel="noopener" hidden>Voir sur le site</a><button id="prepare-mailing" type="button" class="button primary">Préparer la Newsletter</button><button id="wordpress-trash" type="button" class="button secondary">Retirer du site</button></div>
-          <section class="email-workbench" aria-labelledby="email-workbench-title">
-            <h3 id="email-workbench-title">Préparer la Newsletter</h3>
-            <p class="hint">Prévisualisez un e-mail à partir de ce dossier validé. Aucun e-mail n’est envoyé depuis cet aperçu.</p>
-            <div class="fields">
-              <label>Titre de l’e-mail <input id="email-title" type="text"></label>
-              <label>Introduction <textarea id="email-intro" rows="4"></textarea></label>
-              <label>Lien vers la page publiée <input id="email-url" type="url" placeholder="https://heritage-libanais.fr/..."></label>
-            </div>
-            <div class="action-row"><button id="email-preview-button" type="button" class="button secondary">Prévisualiser l’e-mail</button></div>
-            <p id="email-preview-status" class="hint" role="status"></p>
-            <div id="email-preview-panel" hidden>
-              <p><strong>Objet :</strong> <span id="email-preview-subject"></span></p>
-              <p><strong>Aperçu :</strong> <span id="email-preview-preheader"></span></p>
-              <iframe id="email-preview-frame" title="Aperçu de l’e-mail" sandbox=""></iframe>
-            </div>
-          </section>
-          <button id="archive" type="button" class="button secondary">Archiver le dossier local</button>
+        <section id="publication-panel" class="panel publication-panel" aria-labelledby="validation-title" hidden>
+          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title" tabindex="-1">Publication sur le site</h2></div>
+          <div id="validation-panel" hidden>
+            <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
+            <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
+            <details id="publication-image-metadata" class="publication-image-metadata" hidden>
+              <summary>Crédits et droits des images (facultatif)</summary>
+              <div id="publication-images" class="fields"></div>
+            </details>
+            <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
+            <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
+          </div>
+          <div id="draft-panel" class="publication-result" hidden>
+            <article class="site-card"><div class="site-art"><span id="card-theme">RÉCIT</span><img src="../dist/assets/embleme-clair.svg" alt=""></div><div class="site-copy"><span id="card-meta"></span><h3 id="draft-card-title"></h3><p id="card-summary"></p><span id="wordpress-status" class="draft-chip">PUBLICATION WORDPRESS</span></div></article>
+            <p id="draft-details" class="hint"></p>
+            <div class="action-row"><a id="wordpress-link" class="button secondary" href="#" target="_blank" rel="noopener" hidden>Voir sur le site</a><button id="prepare-mailing" type="button" class="button primary">Préparer la Newsletter</button><button id="wordpress-trash" type="button" class="button secondary">Retirer du site</button></div>
+            <section class="email-workbench" aria-labelledby="email-workbench-title">
+              <h3 id="email-workbench-title">Préparer la Newsletter</h3>
+              <p class="hint">Prévisualisez un e-mail à partir de ce dossier validé. Aucun e-mail n’est envoyé depuis cet aperçu.</p>
+              <div class="fields">
+                <label>Titre de l’e-mail <input id="email-title" type="text"></label>
+                <label>Introduction <textarea id="email-intro" rows="4"></textarea></label>
+                <label>Lien vers la page publiée <input id="email-url" type="url" placeholder="https://heritage-libanais.fr/..."></label>
+              </div>
+              <div class="action-row"><button id="email-preview-button" type="button" class="button secondary">Prévisualiser l’e-mail</button></div>
+              <p id="email-preview-status" class="hint" role="status"></p>
+              <div id="email-preview-panel" hidden>
+                <p><strong>Objet :</strong> <span id="email-preview-subject"></span></p>
+                <p><strong>Aperçu :</strong> <span id="email-preview-preheader"></span></p>
+                <iframe id="email-preview-frame" title="Aperçu de l’e-mail" sandbox=""></iframe>
+              </div>
+            </section>
+            <button id="archive" type="button" class="button secondary">Archiver le dossier local</button>
+          </div>
         </section>
       </div>
     </div>

@@ -58,7 +58,8 @@
 .story-template-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .story-template-list > figure{margin:0;min-width:0}
 .story-template-list > figure > figcaption{margin-top:5px;font-size:12px;line-height:1.35}
-.story-template-list .slide-stage .slide-frame{background:#fff;filter:grayscale(1)}
+.story-template-stage{position:relative;aspect-ratio:840/595;overflow:hidden;background:var(--paper)}
+.story-template-stage iframe{position:absolute;inset:0;width:840px;height:595px;border:0;transform:scale(var(--preview-scale,0));transform-origin:top left;pointer-events:none}
 .template-empty-box{
   box-sizing:border-box;display:grid;place-items:center;width:100%;height:100%;
   border:3px dashed #749182;color:#365d4b;background:rgba(255,255,255,.24);

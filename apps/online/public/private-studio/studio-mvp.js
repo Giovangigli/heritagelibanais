@@ -1,7 +1,7 @@
 import {eventIconPreviewUrl,renderEventPage} from './studio-event-page.mjs';
 import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
-import {renderStoryPreview} from './studio-publication-page.mjs';
+import {renderStoryPreview, renderStoryTemplate} from './studio-publication-page.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -815,7 +815,7 @@ function renderRevisionControls(entry) {
   const isLatest = Boolean(entry && entry.number === state.proposals.at(-1)?.number);
   $('validation-panel').hidden = pending || !isLatest || !['Proposition', 'Prêt à valider'].includes(state.status);
   $('draft-panel').hidden = pending || !state.draft;
-  $('archive').hidden = pending || !state.draft;
+  $('publication-panel').hidden = $('validation-panel').hidden && $('draft-panel').hidden;
   return pending;
 }
 function renderVersionFeedback() {
@@ -970,23 +970,25 @@ function renderCardFrame(frame, comp, card, position, empty = false) {
 }
 function renderStoryTemplates() {
   const list = $('story-template-list');
-  const comp = { type: 'recit', textes: [], medias: [], cartes: [] };
+  const styles = wordpressPreviewStyles();
   const resize = new ResizeObserver(entries => {
     for (const { target } of entries) {
-      if (target.clientWidth) target.firstElementChild.style.setProperty('--preview-scale', String(target.clientWidth / 1080));
+      if (target.clientWidth) target.style.setProperty('--preview-scale', String(target.clientWidth / 840));
     }
   });
-  for (const [position, gabarit] of STORY_GABARITS.entries()) {
+  for (const gabarit of STORY_GABARITS) {
     const sample = document.createElement('figure');
     const stage = document.createElement('div');
-    stage.className = 'slide-stage';
+    stage.className = 'story-template-stage';
     stage.setAttribute('aria-hidden', 'true');
-    const frame = document.createElement('div');
+    const frame = document.createElement('iframe');
+    frame.title = templateLabel(gabarit);
+    frame.tabIndex = -1;
+    frame.setAttribute('sandbox', '');
+    frame.referrerPolicy = 'no-referrer';
+    frame.srcdoc = `<!doctype html><html lang="fr"><meta charset="utf-8">${styles}<style>body{margin:0;overflow:hidden}.hl-wp-story{margin:0;padding:0}</style><body>${renderStoryTemplate(gabarit)}</body></html>`;
     const caption = document.createElement('figcaption');
-    caption.textContent = templateLabel(gabarit);
-    const count = gabarit === 'assemblage' ? 3 : MEDIA_COUNTS[gabarit][0];
-    const medias = Array.from({ length: count }, () => ({ role: 'contexte', taille: 'normale' }));
-    renderCardFrame(frame, comp, { gabarit, blocs: [], medias, champs: [] }, position, true);
+    caption.textContent = frame.title;
     stage.append(frame);
     sample.append(stage, caption);
     list.append(sample);
@@ -1155,7 +1157,7 @@ function wordpressPreviewStyles(extra = []) {
   // WordPress.com caches unversioned theme assets across theme replacements.
   const styles = ['design-system.css', 'stories.css'].map(file => {
     const url = new URL(file, theme);
-    if (!local) url.searchParams.set('ver', '1.0.35');
+    if (!local) url.searchParams.set('ver', '1.0.36');
     return url.href;
   });
   return [...styles, ...extra].map(url => `<link rel="stylesheet" href="${url}">`).join('');
@@ -1544,7 +1546,7 @@ $('validate').addEventListener('click', async () => {
       localStorage.setItem(storageKey+'-revision',String(cloudRevision));
       localStorage.removeItem(storageKey+'-pending');
     }
-    render();refreshPublicationList();feedback(updating?'Publication mise à jour. Vérifiez la page WordPress.':'Publié sur WordPress. Vérifiez la page.');focusStep('draft-title');
+    render();refreshPublicationList();feedback(updating?'Publication mise à jour. Vérifiez la page WordPress.':'Publié sur WordPress. Vérifiez la page.');focusStep('validation-title');
   } catch(error) { feedback(error.message,true); }
   finally {
     publishing = false;
