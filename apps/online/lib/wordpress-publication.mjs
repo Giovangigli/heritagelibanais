@@ -85,7 +85,7 @@ async function uploadMedia(connection, image, fetchImpl) {
   const form=new FormData();
   form.append('file',new Blob([image.bytes],{type:image.contentType}),image.name);
   form.append('alt_text',image.alt);
-  form.append('caption',image.credit);
+  if (image.credit) form.append('caption',image.credit);
   const response=await fetchImpl(url,{method:'POST',headers:{Authorization:authorization,Accept:'application/json'},body:form,signal:AbortSignal.timeout(30000)}).catch(()=>{
     throw failure('Le transfert de l’image vers WordPress a échoué. Réessayez après avoir vérifié la connexion.');
   });

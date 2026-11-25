@@ -37,6 +37,18 @@ test('a changed event input requires a refreshed preview before validation',()=>
   assert.throws(()=>validate(state,'Éditeur'),/Actualisez l’aperçu/);
 });
 
+test('changing only photo credit and rights does not require regenerating the event preview',()=>{
+  const start=emptyState('evenement');
+  const event={...start.dossier.event,startDate:'2026-12-10',startTime:'18:00',venue:'Salle'};
+  const dossier={...start.dossier,title:'Rencontre',sourceText:'Programme.',event,mediaMode:'photos',
+    eventVisualMode:'photo',eventImageId:'a',media:[{id:'a',name:'visuel.png'}]};
+  const state=createProposal(saveDossier(start,dossier),{title:dossier.title,summary:dossier.sourceText,contentType:'evenement',siteEvent:true,event});
+  Object.assign(state.dossier.media[0],{credit:'Photographe',rights:'confirmés',rightsEvidence:'Licence de recette'});
+  assert.equal(validate(state,'Éditeur').draft.title,'Rencontre');
+  state.dossier.media[0].id='b';
+  assert.throws(()=>validate(state,'Éditeur'),/Actualisez l’aperçu/);
+});
+
 test('an event still requires the date, start time and place, and photo mode requires a photo', () => {
   const dossier = { ...emptyState().dossier, contentType: 'evenement', title: 'Une rencontre' };
   assert.deepEqual(dossierGaps(dossier), ['évènement : date', 'évènement : horaire', 'évènement : lieu ou accès en ligne']);

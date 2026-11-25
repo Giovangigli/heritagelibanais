@@ -17,7 +17,7 @@ export function renderPublicationContent(proposal, uploadedMedia = []) {
   const event = output.contentType === 'evenement' || basis.contentType === 'evenement';
   const details = output.event || basis.event || {};
   const body = approvedBody(proposal);
-  const figures = uploadedMedia.map(item => `<figure class="studio-image"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt)}"><figcaption>${escapeHtml(item.credit)}</figcaption></figure>`).join('\n');
+  const figures = uploadedMedia.map(item => `<figure class="studio-image"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt)}">${item.credit ? `<figcaption>${escapeHtml(item.credit)}</figcaption>` : ''}</figure>`).join('\n');
   const sources = basis.sources?.trim() ? `<section class="studio-sources"><h2>Sources</h2>${paragraph(basis.sources)}</section>` : '';
   if (!event) return `<article class="editorial-carousel studio-publication"><div class="new-slide-copy">${body}</div>${figures}${sources}</article>`;
   const eventDate = `${details.startDate || ''} ${details.startTime || ''}`.trim();
