@@ -709,6 +709,7 @@ export function migrateLegacyComposition(output = {}, dossier = {}, photos = [])
     const textCards = typeof output.cards === 'string' ? output.cards.split('\n').filter((t) => t.length) : [];
     slides = textCards.map((body, i) => ({ title: i === 0 ? body : '', body: i === 0 ? '' : body, layout: i === 0 ? 'cover' : 'text' }));
   }
+  const alternatives = new Map((dossier.media || []).map(({ id, alt }) => [id, alt]));
   for (const [index, slide] of (slides || []).entries()) {
     const card = { id: slide.canonicalId || slide.id || 'c' + (index + 1), gabarit: slide.gabarit || OLD_GABARITS[slide.layout] || (index === 0 ? 'couverture' : 'texte'), motif: MOTIFS.includes(slide.motif) ? slide.motif : OLD_MOTIFS[slide.motif] || 'aucun', blocs: [], medias: [], champs: copy(slide.fields || []) };
     for (const [role, value] of [['titre', String(slide.title ?? '')], ['corps', String(slide.body ?? '')]]) {
@@ -716,7 +717,7 @@ export function migrateLegacyComposition(output = {}, dossier = {}, photos = [])
       blocks.forEach((b) => { comp.textes.push(b); card.blocs.push(b.id); });
     }
     const ids = [...new Set([...(slide.mediaIds || []), slide.photoId].filter(Boolean))];
-    card.medias = Array.isArray(slide.mediaPlacements) ? copy(slide.mediaPlacements) : ids.map((id) => placementFor(comp, id, slide));
+    card.medias = Array.isArray(slide.mediaPlacements) ? copy(slide.mediaPlacements) : ids.map((id) => placementFor(comp, id, { ...slide, alt: slide.alt || alternatives.get(id) }));
     if (type === 'evenement') { card.gabarit = index === 0 ? 'affiche' : 'fiche'; if (index === 1) card.champs = comp.pratique.map((f) => f.cle); }
     else if (index === 0) card.gabarit = 'couverture';
     else if (card.medias.length === 0) card.gabarit = 'texte';

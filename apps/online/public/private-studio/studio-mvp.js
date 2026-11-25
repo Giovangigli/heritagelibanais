@@ -1,5 +1,4 @@
 import {eventIconPreviewUrl,renderEventPage} from './studio-event-page.mjs';
-import {renderPublicationPreview} from './studio-publication-page.mjs';
 import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
 import {renderInstagramJpeg} from './studio-instagram-render.mjs';
@@ -581,8 +580,8 @@ function renderPublicationImageMetadata(entry) {
       if (compositionImage && key === 'credit') compositionImage.credit = value || null;
       if (compositionImage && key === 'rights') compositionImage.droits = value || null;
       updateGaps();
-      renderWordPressPreview(entry);
-      if (entry.output.contentType === 'recit') renderSlide();
+      if (entry.output.siteEvent) renderWordPressPreview(entry);
+      else if (entry.output.contentType === 'recit') renderSlide();
     };
 
     const credit = document.createElement('input');
@@ -739,7 +738,6 @@ function manualEdit(transform, rerenderEditor = false) {
     persist(); renderSlide(); renderVersionFeedback();
     if (rerenderEditor) renderCardEditor();
     renderEventOutput({ ...entry, output: readOutput() });
-    renderWordPressPreview({ ...entry, output: readOutput() });
     updateProposalGaps({ ...entry, output: readOutput() });
     const issues = manualCompositionIssues(comp);
     showCardEditIssues(issues);
@@ -1049,13 +1047,16 @@ function render() {
     $('version-request').textContent = entry.request ? 'Demande ayant conduit à cette version : ' + entry.request : '';
     const displayed = { ...entry, output: readOutput() };
     updateProposalGaps(displayed);
-    renderWordPressPreview(displayed);
     const siteEvent = displayed.output.siteEvent === true;
+    $('site-preview').hidden = !siteEvent;
     $('review-title').textContent = siteEvent ? 'Aperçu sur le site' : 'Aperçu';
     $('review-help').textContent = siteEvent
       ? 'Relisez la page de l’événement. Modifiez-la depuis la saisie.'
       : 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
-    if (siteEvent) $('site-preview').open = true;
+    if (siteEvent) {
+      $('site-preview').open = true;
+      renderWordPressPreview(displayed);
+    }
     $('card-workbench').hidden = siteEvent;
     renderEventOutput(displayed);
     if (siteEvent) {
@@ -1069,6 +1070,7 @@ function render() {
       renderCardEditor();
     }
   } else {
+    $('site-preview').hidden = true;
     $('review-title').textContent = 'Aperçu';
     $('review-help').textContent = 'Relisez les cartes et modifiez directement leurs textes, images et mise en page. L’aperçu se met à jour immédiatement.';
     $('version-select').replaceChildren();
@@ -1115,10 +1117,10 @@ function renderWordPressPreview(entry) {
   const local=location.hostname==='127.0.0.1'||location.hostname==='localhost';
   const theme=new URL('/wp-content/themes/heritage-libanais/',local?'http://127.0.0.1:48888/':'https://heritage-libanais.fr/');
   const styles=['design-system.css','stories.css'];
-  if (entry.output.siteEvent) styles.push(new URL('./event-page.css?v=2',import.meta.url).href);
+  styles.push(new URL('./event-page.css?v=2',import.meta.url).href);
   const links=styles.map(file=>`<link rel="stylesheet" href="${new URL(file,theme).href}">`).join('');
   let html;
-  try { html=renderPublicationPreview(entry,media); }
+  try { html=renderEventPage(entry,media[0],{preview:true}); }
   catch { html='<p>Complétez les informations du dossier pour afficher l’aperçu WordPress.</p>'; }
   const frame=$('site-preview-frame');
   const srcdoc=`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${links}<body><main>${html}</main></body></html>`;

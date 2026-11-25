@@ -5,6 +5,7 @@ import {storyCreationIssue} from '../public/private-studio/composition-v2.mjs';
 import {handleMailingRequest} from './mailing-api.mjs';
 import {handleInstagramRequest} from './instagram-api.mjs';
 import {resolveStudioAccess,studioStorageScope} from './studio-access.mjs';
+import {STORY_PUBLICATION_FORMAT} from '../public/private-studio/studio-publication-page.mjs';
 import {contentType,publicationMedia,validate} from '../public/private-studio/studio-model.mjs';
 import {publishWordPressPost,trashWordPressPost,restoreWordPressPost,verifyWordPressToken,verifyWordPressEventPlugin,wordpressEventRegistrations} from './wordpress-publication.mjs';
 const WEBHOOK='https://giovangigli.app.n8n.cloud/webhook/heritage-studio-draft';
@@ -127,7 +128,9 @@ async function publishStudioDossier({env,access,revision,reviewer,preview,fetchI
     const type=contentType(proposal.basis);
     const first=state.proposals[0];
     const dossierHash=await publicationHash([workspaceId,type,first.at,first.number]);
-    const versionHash=await publicationHash([proposal.at,proposal.number,proposal.basis,proposal.output]);
+    const version=[proposal.at,proposal.number,proposal.basis,proposal.output];
+    if(type==='recit')version.push(STORY_PUBLICATION_FORMAT);
+    const versionHash=await publicationHash(version);
     const stableSlug='studio-'+dossierHash.slice(0,24);
     const prior=await trackedPublication(db,workspaceId,type,state,stableSlug);
     const slug=prior?.slug || stableSlug;
@@ -151,7 +154,7 @@ async function publishStudioDossier({env,access,revision,reviewer,preview,fetchI
         const bytes=await object.arrayBuffer();
         if(bytes.byteLength>10*1024*1024)throw error('Une image dépasse 10 Mo. Réduisez-la avant publication.',413);
         const credit=typeof item.credit==='string'?item.credit.trim():'';
-        images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit});
+        images.push({mediaId:item.id,bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit});
       }
       post=await publishWordPressPost(credential,proposal,slug,fetchImpl,images,prior?.post_id ?? null);
     }

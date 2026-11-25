@@ -16,7 +16,7 @@ function wordpressAccess(connection) {
 
 const failure = (message, status = 502) => Object.assign(new Error(message), { status });
 export function wordpressPostFromProposal(proposal, slug, uploadedMedia = []) {
-  if (!proposal?.output?.title?.trim() || (!proposal.output.siteEvent&&!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
+  if (!proposal?.output?.title?.trim() || (!proposal.output.siteEvent&&!proposal?.basis?.sourceText?.trim()&&!proposal?.output?.slides?.length&&!proposal?.output?.composition?.cartes?.length)) throw failure('Le titre et le texte validé sont nécessaires avant publication.', 400);
   if (!/^studio-[a-f0-9]{24}$/.test(slug)) throw failure('Référence de publication invalide.', 400);
   return {
     title: proposal.output.title.trim(),
@@ -91,7 +91,7 @@ async function uploadMedia(connection, image, fetchImpl) {
   });
   const payload=await response.json().catch(()=>null);
   if(!response.ok||!Number.isSafeInteger(payload?.id)||!payload?.source_url?.startsWith('https://'))throw failure('WordPress n’a pas accepté une image. La publication a été arrêtée.');
-  return {id:payload.id,url:payload.source_url,alt:image.alt,credit:image.credit};
+  return {id:payload.id,mediaId:image.mediaId,url:payload.source_url,alt:image.alt,credit:image.credit};
 }
 
 export async function uploadWordPressMedia(connection,image,fetchImpl=fetch){
