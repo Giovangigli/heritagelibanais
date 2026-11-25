@@ -1,4 +1,4 @@
-import {eventIconPreviewUrl} from './studio-event-page.mjs';
+import {eventIconPreviewUrl,renderEventPage} from './studio-event-page.mjs';
 import {renderPublicationPreview} from './studio-publication-page.mjs';
 import { workflowStepIndex, emptyState, emptyEvent, contentType, EVENT_ICONS, eventIcon, eventPreviewMatches, separateDossiers, eventDetails, dossierGaps, hasIntake, saveDossier, createProposal, proposalSlides, publicationMedia, archive, createStudioSession, requestStudioComposition } from './studio-model.mjs';
 import { buildCompositionInput, storyCreationIssue, applyCompositionResponse, compositionToLegacy, editCompositionCard, ensureComposition, validateCompositionState, CARD_BACKGROUNDS, MEDIA_COUNTS, STORY_GABARITS, resolveFreeRevisionScope, suggestImageLayout } from './composition-v2.mjs';
@@ -407,7 +407,7 @@ function readDossier() {
   for (const key of dossierFields) dossier[key] = ['title','sourceText'].includes(key) ? form.elements[key].value : form.elements[key].value.trim();
   dossier.contentType = form.elements.contentType.value;
   dossier.event = emptyEvent();
-  for (const key of eventKeys) dossier.event[key] = key === 'speakers' ? form.elements['event_' + key].value.split('\n') : form.elements['event_' + key].value;
+  for (const key of eventKeys) dossier.event[key] = key === 'speakers' ? form.elements['event_' + key].value.split('\n').map(name=>name.trim()).filter(Boolean) : form.elements['event_' + key].value;
   dossier.storyUsesPhotos = form.elements.usePhotos.checked;
   if (dossier.contentType === 'evenement') {
     dossier.theme = 'Événement';

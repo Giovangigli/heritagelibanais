@@ -99,7 +99,8 @@ export function publicationMedia(dossier) {
 export function eventPreviewMatches(basis, dossier) {
   const fields = value => {
     const media = publicationMedia(value);
-    return [value.title, value.sourceText, value.sources, value.event, eventIcon(value),
+    const event={...value.event,speakers:(value.event?.speakers || []).map(name=>name.trim()).filter(Boolean)};
+    return [value.title, value.sourceText, value.sources, event, eventIcon(value),
       value.eventVisualMode === 'photo' && media.length === 0, media];
   };
   return contentType(dossier) === 'evenement' && JSON.stringify(fields(basis)) === JSON.stringify(fields(dossier));
