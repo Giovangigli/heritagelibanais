@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
-  <title id="title">Pictogramme des montagnes du Liban</title>
-  <desc id="desc">Deux sommets angulaires, une crête claire et un soleil rouge.</desc>
-  <circle cx="192" cy="61" r="24" fill="#EE2528"/>
-  <path d="M14 210 105 75l73 97 30-40 52 78Z" fill="#A6BAAA"/>
-  <path d="M14 210 105 75l30 40-28 25 17 17-24 53Z" fill="#789A88"/>
-  <path d="M2 210H254V226H2Z" fill="#064E38"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Montagnes et village"><title>Montagnes et village — Héritage Libanais</title><path d="M17 175 100 60l61 83 31-44 48 77Z" fill="#A6BAAA"/><path d="M72 100 100 60l37 51-33-12-16 15Z" fill="#F7F4EC"/><path d="M156 145 192 99l35 48-34-15-14 14Z" fill="#F7F4EC"/><path d="M30 185 75 152 108 172 148 143 195 172 231 158V209H30Z" fill="#064E38"/><path d="M86 170 122 145 158 170V205H86Z" fill="#F7F4EC"/><path d="M82 170 122 143 163 170H148L121 155 94 170Z" fill="#B82F2B"/><path d="M118 181H136V205H118Z" fill="#064E38"/><path d="M41 194 63 176 84 194V208H41Z" fill="#B9A98E"/><path d="M20 209H236V225H20Z" fill="#064E38"/></svg>

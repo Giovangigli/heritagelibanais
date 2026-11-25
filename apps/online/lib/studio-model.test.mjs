@@ -73,3 +73,19 @@ test('event publishing keeps only the selected image without removing images fro
   assert.deepEqual(publicationMedia({...dossier,contentType:'recit'}).map(item=>item.id),['a','b']);
   assert.equal(dossier.media.length,2);
 });
+
+
+test('approved heritage pictograms preserve stable keys and both variants', async () => {
+  const {EVENT_ICONS,eventIcon}=await import('../public/private-studio/studio-model.mjs');
+  const {eventIconPreviewUrl}=await import('../public/private-studio/studio-event-page.mjs');
+  const {access}=await import('node:fs/promises');
+  const keys=Object.keys(EVENT_ICONS).filter(key=>/^\d{2}-/.test(key));
+  assert.equal(keys.length,12);
+  for(const key of keys){
+    assert.equal(eventIcon({eventIcon:key}),key);
+    assert.match(eventIconPreviewUrl(key),new RegExp('/pictogrammes/clair/'+key+'\\.svg$'));
+    for(const variant of ['clair','sombre']) await access(new URL('../public/dist/assets/pictogrammes/'+variant+'/'+key+'.svg',import.meta.url));
+  }
+  assert.equal(eventIcon({eventIcon:'cedar'}),'cedar');
+  assert.match(eventIconPreviewUrl('cedar'),/pictogram-cedar\.svg$/);
+});
