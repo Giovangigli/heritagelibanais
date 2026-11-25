@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>Studio privé · Héritage Libanais</title>
-  <link rel="stylesheet" href="studio-mvp.css?v=v1-publication">
+  <link rel="stylesheet" href="studio-mvp.css?v=p0-credits-images">
   <link rel="stylesheet" href="studio-preview.css?v=preview-flow">
-  <script type="module" src="studio-mvp.js?v=v1-publication"></script>
+  <script type="module" src="studio-mvp.js?v=p0-credits-images"></script>
 </head>
 <body>
   <a class="skip" href="#main">Aller au dossier</a>
@@ -174,13 +174,18 @@
             <section id="event-output" class="event-output" aria-labelledby="event-output-title" hidden><h3 id="event-output-title">Fiche de l’évènement</h3><dl id="event-output-details"></dl></section>
             <div id="proposal-checks" class="proposal-checks"></div>
             <p id="validation-gaps" class="pending-note"></p>
-            <section id="validation-panel" aria-label="Publier sur le site" hidden>
-              <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
-              <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
-              <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
-              <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
-            </section>
           </div>
+        </section>
+        <section id="validation-panel" class="panel validation-panel" aria-labelledby="validation-title" hidden>
+          <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="validation-title">Publier sur le site</h2></div>
+          <p id="wordpress-connection-status" class="hint" role="status">Vérification de la connexion WordPress…</p>
+          <details id="wordpress-setup" hidden><summary>Connecter WordPress</summary><p class="hint">Réglage réservé à l’administrateur. Dans WordPress, ouvrez Utilisateurs → Profil, puis créez un mot de passe d’application nommé « Studio Héritage Libanais ». Cette connexion est enregistrée chiffrée côté serveur et peut être révoquée dans WordPress.</p><label>Identifiant WordPress <input id="wordpress-username" type="text" autocomplete="username"></label><label>Mot de passe d’application <input id="wordpress-password" type="password" autocomplete="new-password"></label><button id="wordpress-connect" type="button" class="button secondary">Vérifier et enregistrer</button><details><summary>Utiliser un jeton OAuth existant</summary><label>Jeton WordPress.com <input id="wordpress-token" type="password" autocomplete="new-password"></label></details></details>
+          <fieldset id="publication-image-metadata" class="publication-image-metadata" hidden>
+            <legend>Crédits et droits des images (facultatif)</legend>
+            <div id="publication-images" class="fields"></div>
+          </fieldset>
+          <label class="confirmation"><input id="final-confirmation" type="checkbox"> J’ai relu cette version et je confirme sa publication sur le site.</label>
+          <div class="action-row"><button id="validate" type="button" class="button primary">Valider et publier sur le site</button></div>
         </section>
         <section id="draft-panel" class="panel draft-panel" aria-labelledby="draft-title" hidden>
           <div class="panel-head"><p class="eyebrow">Étape 03</p><h2 id="draft-title" tabindex="-1">Publication du site</h2><p>Retrouvez l’article publié et préparez sa lettre.</p></div>

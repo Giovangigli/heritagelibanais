@@ -174,6 +174,44 @@ test('validation publishes once and Studio can move only its tracked post to Wor
   assert.equal(sql.prepare('SELECT status FROM studio_wordpress_publications').get().status,'trash');
   assert.equal((await handleStudioRequest(request('/api/publication/trash','POST',{revision:3,postId:151}),env,user,{fetchImpl})).status,403);
 });
+test('a story or event with a photo can publish without credit or rights',async(t)=>{
+  for(const type of ['recit','evenement'])await t.test(type,async()=>{
+    const {env}=setup();
+    env.WORDPRESS_ACCESS_TOKEN='fixture';
+    await env.BUCKET.put(user.userId+'/media/visuel',new Uint8Array([137,80,78,71]),{httpMetadata:{contentType:'image/png'}});
+    const start=emptyState(type);
+    const event={...start.dossier.event,startDate:'2026-12-10',startTime:'18:00',venue:'Salle fictive'};
+    const dossier={...start.dossier,title:'Publication de recette',sourceText:'Un texte relu.',event,
+      mediaMode:'photos',media:[{id:'visuel',name:'visuel.png',alt:'Visuel fictif',credit:'  '}],
+      ...(type==='evenement'?{eventImageId:'visuel'}:{})};
+    const saved=saveDossier(start,dossier);
+    const preview=type==='evenement'
+      ?createProposal(saved,{title:dossier.title,summary:dossier.sourceText,contentType:type,siteEvent:true,event})
+      :createProposal(saved);
+    let uploaded=false;
+    let published=false;
+    const fetchImpl=async(url,init)=>{
+      if(init.method==='GET')return Response.json([]);
+      if(url.endsWith('/media')){
+        assert.equal(init.body.has('caption'),false);
+        assert.equal(init.body.get('alt_text'),'Visuel fictif');
+        uploaded=true;
+        return Response.json({id:27,source_url:'https://heritage-libanais.fr/visuel.png'},{status:201});
+      }
+      const post=JSON.parse(init.body);
+      assert.equal(post.featured_media,27);
+      assert.match(post.content,/alt="Visuel fictif"/);
+      assert.doesNotMatch(post.content,/<figcaption>/);
+      published=true;
+      return Response.json({id:30,status:'publish',link:'https://heritage-libanais.fr/recette/'},{status:201});
+    };
+    const result=await handleStudioRequest(request('/api/publication/publish','POST',{revision:0,preview}),env,user,{fetchImpl});
+    assert.equal(result.status,200,await result.text());
+    assert.equal(uploaded,true);
+    assert.equal(published,true);
+  });
+});
+
 test('owner configures WordPress once and an editor can use the shared encrypted connection',async()=>{
   const {env,sql}=setup();configureWorkspace(env);
   const secret='wordpress-test-token-long-enough';

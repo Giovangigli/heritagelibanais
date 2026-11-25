@@ -89,7 +89,6 @@ state = separateDossiers(state);
 let media = structuredClone(state.dossier.media || []);
 const mediaUrls = new Map();
 const rightsUrls = new Map();
-const openMediaDetails = new Set();
 let selectedVersion = state.manualDraft?.fromVersion ?? state.proposals.at(-1)?.number ?? 0;
 let slideIndex = 0;
 const session = createStudioSession();
@@ -226,13 +225,13 @@ function resetDossier() {
     state: structuredClone(state), media: structuredClone(media),
     mediaFiles: new Map(mediaFiles), mediaPreviews: new Map(mediaPreviews),
     mediaUrls: new Map(mediaUrls), rightsUrls: new Map(rightsUrls),
-    openMediaDetails: new Set(openMediaDetails), selectedVersion, slideIndex,
+    selectedVersion, slideIndex,
     confirmed: $('final-confirmation').checked,
     correction: $('correction-request').value,
   };
   session.invalidate();
   state = {...emptyState(contentType(state.dossier)),otherDossier:state.otherDossier}; media = []; selectedVersion = 0; slideIndex = 0;
-  mediaFiles.clear(); mediaPreviews.clear(); mediaUrls.clear(); rightsUrls.clear(); openMediaDetails.clear();
+  mediaFiles.clear(); mediaPreviews.clear(); mediaUrls.clear(); rightsUrls.clear();
   form.reset();
   $('final-confirmation').checked = false;
   $('correction-request').value = '';
@@ -251,7 +250,6 @@ function undoReset() {
   state = previous.state; media = previous.media; selectedVersion = previous.selectedVersion;
   replaceMap(mediaFiles, previous.mediaFiles); replaceMap(mediaPreviews, previous.mediaPreviews);
   replaceMap(mediaUrls, previous.mediaUrls); replaceMap(rightsUrls, previous.rightsUrls);
-  openMediaDetails.clear(); for (const id of previous.openMediaDetails) openMediaDetails.add(id);
   resetSnapshot = null;
   setForm(); updateGaps(); render(); syncGenerationControls();
   slideIndex = previous.slideIndex; if (state.proposals.length) renderSlide();
@@ -277,7 +275,6 @@ function openEditorialWorkspace(type) {
     replaceMap(mediaUrls,cached?.urls || []);
     replaceMap(rightsUrls,cached?.rights || []);
     workspaceMedia.delete(type);
-    openMediaDetails.clear();
     media = structuredClone(state.dossier.media || []);
     selectedVersion = state.manualDraft?.fromVersion ?? state.proposals.at(-1)?.number ?? 0;
     slideIndex = 0;
@@ -488,44 +485,6 @@ function renderMedia() {
     } else thumb.textContent = 'Fichier à rattacher';
     const info = document.createElement('div'); info.className = 'media-info';
     const name = document.createElement('strong'); name.textContent = item.name;
-    const labeled = (label, control) => {
-      const field = document.createElement('label');
-      field.append(document.createTextNode(label), control);
-      return field;
-    };
-    const credit = document.createElement('input'); credit.type = 'text'; credit.placeholder = 'Auteur, organisme et provenance'; credit.value = item.credit || '';
-    credit.addEventListener('input', () => { item.credit = credit.value; updateGaps(); });
-    const rights = document.createElement('select');
-    for (const value of ['à vérifier', 'confirmés', 'non utilisable']) {
-      const option = document.createElement('option'); option.value = value; option.textContent = 'Droits : ' + value; rights.append(option);
-    }
-    rights.value = item.rights || 'à vérifier';
-    rights.addEventListener('change', () => { item.rights = rights.value; updateGaps(); });
-    const evidence = document.createElement('input'); evidence.type = 'text';
-    evidence.placeholder = 'URL de licence, référence ou autorisation datée';
-    evidence.value = item.rightsEvidence || '';
-    evidence.addEventListener('input', () => { item.rightsEvidence = evidence.value; updateGaps(); });
-    const proofFile = document.createElement('input'); proofFile.type = 'file';
-    proofFile.accept = '.pdf,.png,.jpg,.jpeg,.webp,.txt';
-    proofFile.addEventListener('change', () => {
-      const file = proofFile.files?.[0];
-      if (!file) return;
-      if (rightsUrls.has(item.id)) URL.revokeObjectURL(rightsUrls.get(item.id));
-      rightsUrls.set(item.id, URL.createObjectURL(file));
-      item.rightsFileName = file.name;
-      openMediaDetails.add(item.id);
-      renderMedia(); updateGaps();
-    });
-    const proofStatus = document.createElement('p'); proofStatus.className = 'proof-status';
-    if (rightsUrls.has(item.id)) {
-      const link = document.createElement('a'); link.href = rightsUrls.get(item.id);
-      link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Voir le justificatif : ' + item.rightsFileName;
-      proofStatus.append(link);
-    } else if (item.rightsFileName) {
-      proofStatus.textContent = 'Justificatif « ' + item.rightsFileName + ' » à rattacher après rechargement.';
-    } else {
-      proofStatus.textContent = 'Aucun justificatif joint.';
-    }
     const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Retirer ce visuel';
     remove.addEventListener('click', () => {
       dossierEdited();
@@ -533,27 +492,99 @@ function renderMedia() {
       if (rightsUrls.has(item.id)) URL.revokeObjectURL(rightsUrls.get(item.id));
       mediaUrls.delete(item.id); rightsUrls.delete(item.id);
       mediaFiles.delete(item.id); mediaPreviews.delete(item.id);
-      openMediaDetails.delete(item.id);
       if (eventPhotoId === item.id) eventPhotoId = null;
       media = media.filter((entry) => entry.id !== item.id); renderMedia(); updateGaps();
       if (state.proposals.length) render();
     });
     info.append(name, remove);
-    const details = document.createElement('details'); details.className = 'media-meta';
-    details.open = openMediaDetails.has(item.id);
-    details.addEventListener('toggle', () => {
-      if (details.open) openMediaDetails.add(item.id);
-      else openMediaDetails.delete(item.id);
+    row.append(thumb, info); list.append(row);
+  });
+}
+function renderPublicationImageMetadata(entry) {
+  const group = $('publication-image-metadata');
+  const list = $('publication-images');
+  const images = entry ? publicationMedia(entry.basis) : [];
+  group.hidden = images.length === 0;
+  list.replaceChildren();
+
+  for (const item of images) {
+    const row = document.createElement('div');
+    row.className = 'publication-image fields';
+    const name = document.createElement('h3');
+    name.textContent = item.name || 'Image';
+    row.append(name);
+
+    const labeled = (label, control) => {
+      const field = document.createElement('label');
+      field.append(document.createTextNode(label), control);
+      return field;
+    };
+    const update = (key, value) => {
+      item[key] = value;
+      const source = media.find(image => image.id === item.id);
+      if (source) source[key] = value;
+      const compositionImage = entry.output.composition?.medias.find(image => image.id === item.id);
+      if (compositionImage && key === 'credit') compositionImage.credit = value || null;
+      if (compositionImage && key === 'rights') compositionImage.droits = value || null;
+      updateGaps();
+      renderWordPressPreview(entry);
+      if (entry.output.contentType === 'recit') renderSlide();
+    };
+
+    const credit = document.createElement('input');
+    credit.type = 'text';
+    credit.placeholder = 'Auteur, organisme et provenance';
+    credit.value = item.credit || '';
+    credit.addEventListener('input', () => update('credit', credit.value));
+
+    const rights = document.createElement('select');
+    const rightsOptions = ['', 'à vérifier', 'confirmés', 'non utilisable'];
+    if (item.rights && !rightsOptions.includes(item.rights)) rightsOptions.push(item.rights);
+    for (const value of rightsOptions) rights.add(new Option(value || 'Non renseignés', value));
+    rights.value = item.rights || '';
+    rights.addEventListener('change', () => update('rights', rights.value));
+
+    const evidence = document.createElement('input');
+    evidence.type = 'text';
+    evidence.placeholder = 'URL de licence, référence ou autorisation datée';
+    evidence.value = item.rightsEvidence || '';
+    evidence.addEventListener('input', () => update('rightsEvidence', evidence.value));
+
+    const proofStatus = document.createElement('p');
+    proofStatus.className = 'proof-status';
+    const renderProof = () => {
+      if (rightsUrls.has(item.id)) {
+        const link = document.createElement('a');
+        link.href = rightsUrls.get(item.id);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'Voir le justificatif : ' + item.rightsFileName;
+        proofStatus.replaceChildren(link);
+      } else if (item.rightsFileName) {
+        proofStatus.textContent = 'Justificatif « ' + item.rightsFileName + ' » à rattacher après rechargement.';
+      }
+    };
+    const proofFile = document.createElement('input');
+    proofFile.type = 'file';
+    proofFile.accept = '.pdf,.png,.jpg,.jpeg,.webp,.txt';
+    proofFile.addEventListener('change', () => {
+      const file = proofFile.files?.[0];
+      if (!file) return;
+      if (rightsUrls.has(item.id)) URL.revokeObjectURL(rightsUrls.get(item.id));
+      rightsUrls.set(item.id, URL.createObjectURL(file));
+      update('rightsFileName', file.name);
+      renderProof();
     });
-    const summary = document.createElement('summary'); summary.textContent = 'Crédits et droits (facultatif)';
-    details.append(summary,
+    renderProof();
+    row.append(
       labeled('Crédit et provenance', credit),
       labeled('Droits d’utilisation', rights),
       labeled('Référence de licence ou d’autorisation', evidence),
       labeled('Joindre un justificatif (session locale)', proofFile),
-      proofStatus);
-    row.append(thumb, info, details); list.append(row);
-  });
+      proofStatus,
+    );
+    list.append(row);
+  }
 }
 function updateGaps() {
   const dossier = readDossier();
@@ -568,7 +599,7 @@ function updateGaps() {
     return;
   }
   $('media-count').textContent = media.length
-    ? media.length + ' image' + (media.length > 1 ? 's' : '') + ' déposée' + (media.length > 1 ? 's' : '') + (dossier.mediaMode === 'photos' ? (media.length > 1 ? ', disponibles pour la proposition visuelle. ' : ', disponible pour la proposition visuelle. ') : ', non retenue' + (media.length > 1 ? 's' : '') + ' pour la proposition. ') + 'Crédits et droits facultatifs sous chaque photo.'
+    ? media.length + ' image' + (media.length > 1 ? 's' : '') + ' déposée' + (media.length > 1 ? 's' : '') + (dossier.mediaMode === 'photos' ? (media.length > 1 ? ', disponibles pour la proposition visuelle. ' : ', disponible pour la proposition visuelle. ') : ', non retenue' + (media.length > 1 ? 's' : '') + ' pour la proposition. ')
     : 'Aucune image déposée. Les fichiers ne sont pas envoyés.';
 }
 function eventPreviewOutdated(entry) {
@@ -990,6 +1021,7 @@ function render() {
     $('version-date').textContent = '';
     renderRevisionControls();
   }
+  renderPublicationImageMetadata(currentProposal());
   $('revision-validation-error').hidden = true;
   if (state.draft) {
     const draft = state.draft;
@@ -1024,7 +1056,7 @@ function render() {
 function renderWordPressPreview(entry) {
   const media=publicationMedia(entry.basis).flatMap(item=>{
     const url=mediaPreviews.get(item.id)?.dataUrl;
-    return url?[{url,alt:item.alt || entry.output.title,credit:item.credit}]:[];
+    return url?[{url,alt:item.alt || entry.output.title,credit:typeof item.credit==='string'?item.credit.trim():''}]:[];
   });
   const local=location.hostname==='127.0.0.1'||location.hostname==='localhost';
   const theme=new URL('/wp-content/themes/heritage-libanais/',local?'http://127.0.0.1:48888/':'https://heritage-libanais.fr/');
@@ -1249,7 +1281,7 @@ async function addFiles(files) {
       media = media.filter(item => item.id !== eventPhotoId);
       eventPhotoId = id;
     }
-    media.push({ id, name: file.name, size: file.size, credit: '', rights: 'à vérifier', rightsEvidence: '', rightsFileName: '' });
+    media.push({ id, name: file.name, size: file.size, credit: '', rights: '', rightsEvidence: '', rightsFileName: '' });
     mediaUrls.set(id, URL.createObjectURL(file));
     mediaFiles.set(id, file);
     mediaPreviews.set(id, preview);
@@ -1384,6 +1416,7 @@ $('validate').addEventListener('click', async () => {
   if (publishing || (currentProposal() && eventPreviewOutdated(currentProposal()))) return;
   publishing = true;
   form.inert = true;
+  $('validation-panel').inert = true;
   const button=$('validate');button.disabled=true;const updating=state.draft?.wordpressStatus==='publish';
   feedback(updating?'Mise à jour sur WordPress en cours…':'Publication sur WordPress en cours…');
   try {
@@ -1399,6 +1432,7 @@ $('validate').addEventListener('click', async () => {
   finally {
     publishing = false;
     form.inert = false;
+    $('validation-panel').inert = false;
     if (currentProposal()) updateProposalGaps(currentProposal());
   }
 });

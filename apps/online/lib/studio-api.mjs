@@ -141,14 +141,15 @@ async function publishStudioDossier({env,access,revision,reviewer,preview,fetchI
       }
       const images=[];
       for(const item of publicationMedia(proposal.basis)){
-        if(!item.id||!item.credit?.trim()||!item.rights?.trim())throw error('Complétez le crédit et les droits de chaque image avant publication.',409);
+        if(!item.id)throw error('Une image du dossier ne possède pas de référence. Rattachez-la avant publication.',409);
         const object=await env.BUCKET?.get(workspaceId+'/media/'+item.id);
         if(!object)throw error('Une image du dossier est introuvable dans le stockage privé.',409);
         const contentType=object.httpMetadata?.contentType;
         if(!['image/png','image/jpeg','image/webp'].includes(contentType))throw error('WordPress accepte ici les images PNG, JPEG et WebP. Convertissez les autres formats avant publication.',409);
         const bytes=await object.arrayBuffer();
         if(bytes.byteLength>10*1024*1024)throw error('Une image dépasse 10 Mo. Réduisez-la avant publication.',413);
-        images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit:item.credit});
+        const credit=typeof item.credit==='string'?item.credit.trim():'';
+        images.push({bytes,contentType,name:item.name||'image',alt:item.alt||proposal.output.title,credit});
       }
       post=await publishWordPressPost(credential,proposal,slug,fetchImpl,images,prior?.post_id ?? null);
     }
