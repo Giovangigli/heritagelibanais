@@ -1001,17 +1001,17 @@ function fitStoryPreview() {
   const frame = $('slide-frame');
   const viewportWidth = document.documentElement.clientWidth;
   frame.style.width = viewportWidth + 'px';
-  const box = frame.contentDocument?.querySelector('.studio-story-carousel');
-  if (!box || !stage.clientWidth) return;
-  const bounds = box.getBoundingClientRect();
+  // The WordPress section includes spacing below the cards for the public page.
+  const track = frame.contentDocument?.querySelector('.studio-story-carousel [data-carousel-track]');
+  if (!track || !stage.clientWidth) return;
+  const bounds = track.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return;
   const scale = Math.min(1, stage.clientWidth / bounds.width);
   const left = (stage.clientWidth - bounds.width * scale) / 2 - bounds.left * scale;
   frame.style.height = Math.ceil(bounds.height) + 'px';
   frame.style.transform = `translateX(${left}px) scale(${scale})`;
-  stage.style.height = Math.ceil(bounds.height * scale) + 'px';
+  stage.style.height = bounds.height * scale + 'px';
 
-  const track = box.querySelector('[data-carousel-track]');
   const cards = track.children;
   if (cards[slideIndex]) track.scrollLeft = cards[slideIndex].offsetLeft - cards[0].offsetLeft;
 }
